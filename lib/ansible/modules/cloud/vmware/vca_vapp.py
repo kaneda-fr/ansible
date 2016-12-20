@@ -188,7 +188,8 @@ def create(module):
     task = module.vca.create_vapp(vdc_name, vapp_name, template_name,
                                   catalog_name, network_name, network_mode,
                                   vm_name, vm_cpus, vm_memory, deploy, poweron)
-
+    if task is False:
+        module.fail('unable to create vapp')
     module.vca.block_until_completed(task)
 
 def delete(module):
