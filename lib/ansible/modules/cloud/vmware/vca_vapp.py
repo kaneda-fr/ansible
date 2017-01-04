@@ -18,10 +18,6 @@
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
-
 DOCUMENTATION = '''
 ---
 module: vca_vapp
@@ -188,8 +184,16 @@ def create(module):
     task = module.vca.create_vapp(vdc_name, vapp_name, template_name,
                                   catalog_name, network_name, network_mode,
                                   vm_name, vm_cpus, vm_memory, deploy, poweron)
+    if task is False:
+        module.fail('unable to create vapp')
 
     module.vca.block_until_completed(task)
+
+    # Connect the network to the Vapp/VM and return asigned IP
+    if (network_name != None):
+            vm_ip = connect_to_network(module, vdc_name, vapp_name, network_name, network_mode)
+            return vm_ip
+
 
 def delete(module):
     vdc_name = module.params['vdc_name']
@@ -229,6 +233,77 @@ def set_state(module):
         if not vapp.undeploy(action):
             module.fail('unable to undeploy vapp')
 
+def connect_to_network(module, vdc_name, vapp_name, network_name, network_mode):
+    
+    nets = filter(lambda n: n.name == network_name, module.vca.get_networks(vdc_name))
+    assert len(nets) == 1
+    the_vdc = module.vca.get_vdc(vdc_name)
+    the_vapp = module.vca.get_vapp(the_vdc, vapp_name)
+    assert the_vapp
+    assert the_vapp.name == vapp_name
+        
+    # Connect vApp
+    task = the_vapp.connect_to_network(nets[0].name, nets[0].href)
+    result = module.vca.block_until_completed(task)
+    assert result
+        
+    # Connect VM
+    if(network_mode == 'pool'):
+        task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='POOL')
+    else:
+        if(network_mode == 'dhcp'):
+            task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='DHCP')
+        
+    assert task
+    result = module.vca.block_until_completed(task)
+    assert result
+
+    #Update VApp info and get VM IP
+    the_vapp = module.vca.get_vapp(the_vdc, vapp_name) 
+    assert the_vapp
+
+    return get_vm_details(module)
+
+def get_vm_details(module):
+    vdc_name = module.params['vdc_name']
+    vapp_name = module.params['vapp_name']
+    vm_name = module.params['vm_name']
+    the_vdc = module.vca.get_vdc(vdc_name)
+    the_vapp = module.vca.get_vapp(the_vdc, vapp_name)
+    assert the_vapp
+    assert the_vapp.name == vapp_name
+    the_vm_details = dict()
+
+    for vm in the_vapp.me.Children.Vm:
+        sections = vm.get_Section()
+
+        customization_section = ( 
+            filter(lambda section:
+                   section.__class__.__name__ ==
+                   "GuestCustomizationSectionType",
+                   sections)[0])
+        if customization_section.get_AdminPasswordEnabled():
+            the_vm_details["vm_admin_password"] = customization_section.get_AdminPassword()
+
+        virtualHardwareSection = (
+            filter(lambda section:
+                   section.__class__.__name__ ==
+                   "VirtualHardwareSection_Type",
+                   sections)[0])
+        items = virtualHardwareSection.get_Item()
+        ips = []
+        _url = '{http://www.vmware.com/vcloud/v1.5}ipAddress' 
+        for item in items:
+            if item.Connection:
+                for c in item.Connection:
+                    if c.anyAttributes_.get(
+                            _url):
+                        ips.append(c.anyAttributes_.get(
+                            _url))
+    if len(ips) > 0:
+        the_vm_details["vm_ip"] = ips[0]
+
+    return the_vm_details
 
 def main():
 
@@ -264,8 +339,8 @@ def main():
     elif state != 'absent':
         if instance['state'] == 'absent':
             if not module.check_mode:
-                create(module)
-            result['changed'] = True
+                result['ansible_facts'] = create(module)
+            result['changed'] = True 
 
         elif instance['state'] != state and state != 'present':
             if not module.check_mode:
@@ -276,11 +351,13 @@ def main():
             if not module.check_mode:
                 do_operation(module)
             result['changed'] = True
+        result['ansible_facts'] = get_vm_details(module)
 
     return module.exit(**result)
 
 # import module snippets
 from ansible.module_utils.basic import *
 from ansible.module_utils.vca import *
+import json
 if __name__ == '__main__':
     main()
