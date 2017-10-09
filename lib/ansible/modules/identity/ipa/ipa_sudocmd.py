@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -96,10 +88,14 @@ sudocmd:
   type: dict
 '''
 
+import traceback
+
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class SudoCmdIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(SudoCmdIPAClient, self).__init__(module, host, port, protocol)
 
@@ -123,19 +119,8 @@ def get_sudocmd_dict(description=None):
     return data
 
 
-def get_sudocmd_diff(ipa_sudocmd, module_sudocmd):
-    data = []
-    for key in module_sudocmd.keys():
-        module_value = module_sudocmd.get(key, None)
-        ipa_value = ipa_sudocmd.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(module_value, list):
-            module_value = [module_value]
-        if isinstance(ipa_value, list) and isinstance(module_value, list):
-            ipa_value = sorted(ipa_value)
-            module_value = sorted(module_value)
-        if ipa_value != module_value:
-            data.append(key)
-    return data
+def get_sudocmd_diff(client, ipa_sudocmd, module_sudocmd):
+    return client.get_diff(ipa_data=ipa_sudocmd, module_data=module_sudocmd)
 
 
 def ensure(module, client):
@@ -152,7 +137,7 @@ def ensure(module, client):
             if not module.check_mode:
                 client.sudocmd_add(name=name, item=module_sudocmd)
         else:
-            diff = get_sudocmd_diff(ipa_sudocmd, module_sudocmd)
+            diff = get_sudocmd_diff(client, ipa_sudocmd, module_sudocmd)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -195,13 +180,9 @@ def main():
                      password=module.params['ipa_pass'])
         changed, sudocmd = ensure(module, client)
         module.exit_json(changed=changed, sudocmd=sudocmd)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 
 if __name__ == '__main__':
     main()

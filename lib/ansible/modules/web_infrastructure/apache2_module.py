@@ -1,24 +1,17 @@
 #!/usr/bin/python
-#coding: utf-8 -*-
+# coding: utf-8 -*-
 
 # (c) 2013-2014, Christian Berendt <berendt@b1-systems.de>
-#
-# This module is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This software is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this software.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -103,15 +96,14 @@ stderr:
 
 import re
 
+
 def _run_threaded(module):
     control_binary = _get_ctl_binary(module)
 
     result, stdout, stderr = module.run_command("%s -V" % control_binary)
 
-    if re.search(r'threaded:[ ]*yes', stdout):
-        return True
-    else:
-        return False
+    return bool(re.search(r'threaded:[ ]*yes', stdout))
+
 
 def _get_ctl_binary(module):
     for command in ['apache2ctl', 'apachectl']:
@@ -120,9 +112,10 @@ def _get_ctl_binary(module):
             return ctl_binary
 
     module.fail_json(
-      msg="Neither of apache2ctl nor apachctl found."
-          " At least one apache control binary is necessary."
+        msg="Neither of apache2ctl nor apachctl found."
+            " At least one apache control binary is necessary."
     )
+
 
 def _module_is_enabled(module):
     control_binary = _get_ctl_binary(module)
@@ -131,19 +124,13 @@ def _module_is_enabled(module):
 
     result, stdout, stderr = module.run_command("%s -M" % control_binary)
 
-    """
-    Work around for Ubuntu Xenial listing php7_module as php7.0
-    """
-    if name == "php7.0":
-        name = "php7"
-
     if result != 0:
         error_msg = "Error executing %s: %s" % (control_binary, stderr)
         if ignore_configcheck:
             if 'AH00534' in stderr and 'mpm_' in name:
                 module.warnings.append(
                     "No MPM module loaded! apache2 reload AND other module actions"
-                    " will fail if no MPM module is loaded immediatly."
+                    " will fail if no MPM module is loaded immediately."
                 )
             else:
                 module.warnings.append(error_msg)
@@ -151,7 +138,39 @@ def _module_is_enabled(module):
         else:
             module.fail_json(msg=error_msg)
 
-    return bool(re.search(r' ' + name + r'_module', stdout))
+    searchstring = ' ' + create_apache_identifier(name)
+    return searchstring in stdout
+
+
+def create_apache_identifier(name):
+    """
+    By convention if a module is loaded via name, it appears in apache2ctl -M as
+    name_module.
+
+    Some modules don't follow this convention and we use replacements for those."""
+
+    # a2enmod name replacement to apache2ctl -M names
+    text_workarounds = [
+        ('shib2', 'mod_shib'),
+        ('evasive', 'evasive20_module'),
+    ]
+
+    # re expressions to extract subparts of names
+    re_workarounds = [
+        ('php', r'^(php\d)\.'),
+    ]
+
+    for a2enmod_spelling, module_name in text_workarounds:
+        if a2enmod_spelling in name:
+            return module_name
+
+    for search, reexpr in re_workarounds:
+        if search in name:
+            rematch = re.search(reexpr, name)
+            return rematch.group(1) + '_module'
+
+    return name + '_module'
+
 
 def _set_state(module, state):
     name = module.params['name']
@@ -192,15 +211,16 @@ def _set_state(module, state):
                          result=success_msg,
                          warnings=module.warnings)
 
+
 def main():
     module = AnsibleModule(
-        argument_spec = dict(
-            name  = dict(required=True),
-            force = dict(required=False, type='bool', default=False),
-            state = dict(default='present', choices=['absent', 'present']),
+        argument_spec=dict(
+            name=dict(required=True),
+            force=dict(required=False, type='bool', default=False),
+            state=dict(default='present', choices=['absent', 'present']),
             ignore_configcheck=dict(required=False, type='bool', default=False),
         ),
-        supports_check_mode = True,
+        supports_check_mode=True,
     )
 
     module.warnings = []
@@ -213,6 +233,6 @@ def main():
         _set_state(module, module.params['state'])
 
 # import module snippets
-from ansible.module_utils.basic import *
+from ansible.module_utils.basic import AnsibleModule
 if __name__ == '__main__':
     main()

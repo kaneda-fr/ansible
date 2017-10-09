@@ -3,27 +3,16 @@
 
 # (c) 2014, Jakub Jirutka <jakub@jirutka.cz>
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-import shutil
-from os import path
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -93,7 +82,8 @@ EXAMPLES = '''
     state: absent
 '''
 
-USERAGENT = 'ansible-httpget'
+import shutil
+from os import path
 
 try:
     from layman.api import LaymanAPI
@@ -102,8 +92,11 @@ try:
 except ImportError:
     HAS_LAYMAN_API = False
 
+USERAGENT = 'ansible-httpget'
 
-class ModuleError(Exception): pass
+
+class ModuleError(Exception):
+    pass
 
 
 def init_layman(config=None):
@@ -157,8 +150,8 @@ def install_overlay(module, name, list_url=None):
     layman = init_layman(layman_conf)
 
     if layman.is_installed(name):
-        return False    
-    
+        return False
+
     if module.check_mode:
         mymsg = 'Would add layman repo \'' + name + '\''
         module.exit_json(changed=True, msg=mymsg)
@@ -195,13 +188,14 @@ def uninstall_overlay(module, name):
 
     if not layman.is_installed(name):
         return False
-    
+
     if module.check_mode:
         mymsg = 'Would remove layman repo \'' + name + '\''
         module.exit_json(changed=True, msg=mymsg)
 
     layman.delete_repos(name)
-    if layman.get_errors(): raise ModuleError(layman.get_errors())
+    if layman.get_errors():
+        raise ModuleError(layman.get_errors())
 
     return True
 

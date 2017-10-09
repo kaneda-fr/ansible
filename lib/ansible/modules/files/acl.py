@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'core',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'core'}
+
 
 DOCUMENTATION = '''
 ---
@@ -27,12 +19,12 @@ short_description: Sets and retrieves file ACL information.
 description:
     - Sets and retrieves file ACL information.
 options:
-  name:
+  path:
     required: true
     default: null
     description:
       - The full path of the file or object.
-    aliases: ['path']
+    aliases: ['name']
 
   state:
     required: false
@@ -54,7 +46,8 @@ options:
     default: no
     choices: [ 'yes', 'no' ]
     description:
-      - if the target is a directory, setting this to yes will make it the default acl for entities created inside the directory. It causes an error if name is a file.
+      - if the target is a directory, setting this to yes will make it the default acl for entities created inside the directory. It causes an error if
+        path is a file.
 
   entity:
     version_added: "1.5"
@@ -70,7 +63,6 @@ options:
     description:
       - the entity type of the ACL to apply, see setfacl documentation for more info.
 
-
   permissions:
     version_added: "1.5"
     required: false
@@ -82,7 +74,9 @@ options:
     required: false
     default: null
     description:
-      - DEPRECATED. The acl to set or remove.  This must always be quoted in the form of '<etype>:<qualifier>:<perms>'.  The qualifier may be empty for some types, but the type and perms are always required. '-' can be used as placeholder when you do not care about permissions. This is now superseded by entity, type and permissions fields.
+      - DEPRECATED. The acl to set or remove.  This must always be quoted in the form of '<etype>:<qualifier>:<perms>'.  The qualifier may be empty for
+        some types, but the type and perms are always required. '-' can be used as placeholder when you do not care about permissions. This is now
+        superseded by entity, type and permissions fields.
 
   recursive:
     version_added: "2.0"
@@ -97,12 +91,13 @@ author:
 notes:
     - The "acl" module requires that acls are enabled on the target filesystem and that the setfacl and getfacl binaries are installed.
     - As of Ansible 2.0, this module only supports Linux distributions.
+    - As of Ansible 2.3, the I(name) option has been changed to I(path) as default, but I(name) still works as well.
 '''
 
 EXAMPLES = '''
 # Grant user Joe read access to a file
 - acl:
-    name: /etc/foo.conf
+    path: /etc/foo.conf
     entity: joe
     etype: user
     permissions: r
@@ -110,14 +105,14 @@ EXAMPLES = '''
 
 # Removes the acl for Joe on a specific file
 - acl:
-    name: /etc/foo.conf
+    path: /etc/foo.conf
     entity: joe
     etype: user
     state: absent
 
 # Sets default acl for joe on foo.d
 - acl:
-    name: /etc/foo.d
+    path: /etc/foo.d
     entity: joe
     etype: user
     permissions: rw
@@ -126,13 +121,13 @@ EXAMPLES = '''
 
 # Same as previous but using entry shorthand
 - acl:
-    name: /etc/foo.d
+    path: /etc/foo.d
     entry: "default:user:joe:rw-"
     state: present
 
 # Obtain the acl for a specific file
 - acl:
-    name: /etc/foo.conf
+    path: /etc/foo.conf
   register: acl_info
 '''
 
@@ -143,6 +138,10 @@ acl:
     type: list
     sample: [ "user::rwx", "group::rwx", "other::rwx" ]
 '''
+
+import os
+from ansible.module_utils.basic import AnsibleModule, get_platform
+from ansible.module_utils.pycompat24 import get_exception
 
 
 def split_entry(entry):
@@ -210,7 +209,7 @@ def build_command(module, mode, path, follow, default, recursive, entry=''):
             cmd.append('-h')
 
     if default:
-        if(mode == 'rm'):
+        if mode == 'rm':
             cmd.insert(1, '-k')
         else:  # mode == 'set' or mode == 'get'
             cmd.insert(1, '-d')
@@ -258,7 +257,7 @@ def run_acl(module, cmd, check_rc=True):
 def main():
     module = AnsibleModule(
         argument_spec=dict(
-            name=dict(required=True, aliases=['path'], type='path'),
+            path=dict(required=True, aliases=['name'], type='path'),
             entry=dict(required=False, type='str'),
             entity=dict(required=False, type='str', default=''),
             etype=dict(
@@ -284,7 +283,7 @@ def main():
     if get_platform().lower() not in ['linux', 'freebsd']:
         module.fail_json(msg="The acl module is not available on this system.")
 
-    path = module.params.get('name')
+    path = module.params.get('path')
     entry = module.params.get('entry')
     entity = module.params.get('entity')
     etype = module.params.get('etype')
@@ -325,7 +324,7 @@ def main():
             module.fail_json(msg="'entry' MUST NOT be set when 'state=query'.")
 
         default_flag, etype, entity, permissions = split_entry(entry)
-        if default_flag != None:
+        if default_flag is not None:
             default = default_flag
 
     if get_platform().lower() == 'freebsd':
@@ -368,9 +367,6 @@ def main():
     )
 
     module.exit_json(changed=changed, msg=msg, acl=acl)
-
-# import module snippets
-from ansible.module_utils.basic import *
 
 if __name__ == '__main__':
     main()

@@ -14,18 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this software.  If not, see <http://www.gnu.org/licenses/>.
 
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
 
-try:
-    import shade
-    HAS_SHADE = True
-except ImportError:
-    HAS_SHADE = False
-
-from distutils.version import StrictVersion
-
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
 
 DOCUMENTATION = '''
 ---
@@ -70,6 +62,10 @@ options:
        - Should the resource be present or absent.
      choices: [present, absent]
      default: present
+   availability_zone:
+     description:
+       - Ignored. Present for backwards compatibility
+     required: false
 requirements:
     - "python >= 2.6"
     - "shade"
@@ -107,7 +103,7 @@ RETURN = '''
 recordset:
     description: Dictionary describing the recordset.
     returned: On success when I(state) is 'present'.
-    type: dictionary
+    type: complex
     contains:
         id:
             description: Unique recordset ID
@@ -138,6 +134,14 @@ recordset:
             type: list
             sample: ['10.0.0.1']
 '''
+
+try:
+    import shade
+    HAS_SHADE = True
+except ImportError:
+    HAS_SHADE = False
+
+from distutils.version import StrictVersion
 
 
 def _system_state_change(state, records, description, ttl, zone, recordset):
@@ -185,11 +189,22 @@ def main():
 
     try:
         cloud = shade.openstack_cloud(**module.params)
-        recordset = cloud.get_recordset(zone, name + '.' + zone)
+        recordset_type = module.params.get('recordset_type')
+        recordset_filter = { 'type': recordset_type  }
 
+        recordsets = cloud.search_recordsets(zone, name_or_id=name + '.' + zone, filters=recordset_filter)
+
+        if len(recordsets) == 1:
+            recordset = recordsets[0]
+            try:
+                recordset_id = recordset['id']
+            except KeyError as e:
+                module.fail_json(msg=str(e))
+        else:
+            # recordsets is filtered by type and should never be more than 1 return
+            recordset = None
 
         if state == 'present':
-            recordset_type = module.params.get('recordset_type')
             records = module.params.get('records')
             description = module.params.get('description')
             ttl = module.params.get('ttl')
@@ -215,10 +230,11 @@ def main():
                                                zone, pre_update_recordset)
                 if changed:
                     zone = cloud.update_recordset(
-                                zone, name + '.' + zone,
-                                records=records,
-                                description=description,
-                                ttl=ttl)
+                        zone, recordset_id,
+                        records=records,
+                        description=description,
+                        ttl=ttl)
+
             module.exit_json(changed=changed, recordset=recordset)
 
         elif state == 'absent':
@@ -231,7 +247,7 @@ def main():
             if recordset is None:
                 changed=False
             else:
-                cloud.delete_recordset(zone, name + '.' + zone)
+                cloud.delete_recordset(zone, recordset_id)
                 changed=True
             module.exit_json(changed=changed)
 

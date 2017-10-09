@@ -17,16 +17,11 @@
 # along with this software.  If not, see <http://www.gnu.org/licenses/>.
 
 #TODO(mordred): we need to support "location"(v1) and "locations"(v2)
-try:
-    import shade
-    HAS_SHADE = True
-except ImportError:
-    HAS_SHADE = False
 
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
 
 DOCUMENTATION = '''
 ---
@@ -42,6 +37,12 @@ options:
      description:
         - Name that has to be given to the image
      required: true
+     default: None
+   id:
+     version_added: "2.4"
+     description:
+        - The Id of the image
+     required: false
      default: None
    disk_format:
      description:
@@ -98,6 +99,10 @@ options:
        - Should the resource be present or absent.
      choices: [present, absent]
      default: present
+   availability_zone:
+     description:
+       - Ignored. Present for backwards compatibility
+     required: false
 requirements: ["shade"]
 '''
 
@@ -121,13 +126,20 @@ EXAMPLES = '''
       distro: ubuntu
 '''
 
+try:
+    import shade
+    HAS_SHADE = True
+except ImportError:
+    HAS_SHADE = False
+
 
 def main():
 
     argument_spec = openstack_full_argument_spec(
         name              = dict(required=True),
-        disk_format       = dict(default='qcow2', choices=['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2', 'vdi', 'iso']),
-        container_format  = dict(default='bare', choices=['ami', 'aki', 'ari', 'bare', 'ovf', 'ova']),
+        id                = dict(default=None),
+        disk_format       = dict(default='qcow2', choices=['ami', 'ari', 'aki', 'vhd', 'vmdk', 'raw', 'qcow2', 'vdi', 'iso', 'vhdx', 'ploop']),
+        container_format  = dict(default='bare', choices=['ami', 'aki', 'ari', 'bare', 'ovf', 'ova', 'docker']),
         owner             = dict(default=None),
         min_disk          = dict(type='int', default=0),
         min_ram           = dict(type='int', default=0),
@@ -152,6 +164,9 @@ def main():
 
         if module.params['state'] == 'present':
             if not image:
+                kwargs={}
+                if module.params['id'] is not None:
+                    kwargs['id'] = module.params['id']
                 image = cloud.create_image(
                     name=module.params['name'],
                     filename=module.params['filename'],
@@ -161,7 +176,8 @@ def main():
                     timeout=module.params['timeout'],
                     is_public=module.params['is_public'],
                     min_disk=module.params['min_disk'],
-                    min_ram=module.params['min_ram']
+                    min_ram=module.params['min_ram'],
+                    **kwargs
                 )
                 changed = True
                 if not module.params['wait']:

@@ -9,23 +9,16 @@
 # Based on pacman module written by Afterburn <http://github.com/afterburn>
 #  that was based on apt module written by Matthew Williams <matthew@flowroute.com>
 #
-# This module is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This software is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this software.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -318,7 +311,7 @@ def do_upgrade_packages(module, full=False):
         module.fail_json(msg="could not %s packages" % cmd)
 
 def upgrade_packages(module):
-        do_upgrade_packages(module)
+    do_upgrade_packages(module)
 
 def full_upgrade_packages(module):
     do_upgrade_packages(module, True)
@@ -336,16 +329,16 @@ def clean_cache(module):
 
 def main():
     module = AnsibleModule(
-            argument_spec    = dict(
-                state        = dict(default="present", choices=["present","absent"]),
-                name         = dict(aliases=["pkg"], type='list'),
-                update_cache = dict(default='no', type='bool'),
-                upgrade      = dict(default='no', type='bool'),
-                full_upgrade = dict(default='no', type='bool'),
-                clean        = dict(default='no', type='bool'),
-                force        = dict(default='no', type='bool')),
-            required_one_of = [['name', 'update_cache', 'upgrade', 'full_upgrade', 'clean']],
-            supports_check_mode = True)
+        argument_spec    = dict(
+            state        = dict(default="present", choices=["present","absent"]),
+            name         = dict(aliases=["pkg"], type='list'),
+            update_cache = dict(default='no', type='bool'),
+            upgrade      = dict(default='no', type='bool'),
+            full_upgrade = dict(default='no', type='bool'),
+            clean        = dict(default='no', type='bool'),
+            force        = dict(default='no', type='bool')),
+        required_one_of = [['name', 'update_cache', 'upgrade', 'full_upgrade', 'clean']],
+        supports_check_mode = True)
 
     global PKGIN_PATH
     PKGIN_PATH = module.get_bin_path('pkgin', True, ['/opt/local/bin'])

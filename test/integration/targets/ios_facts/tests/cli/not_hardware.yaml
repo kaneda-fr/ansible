@@ -4,9 +4,9 @@
 
 - name: test not hardware
   ios_facts:
-    provider: "{{ cli }}"
     gather_subset:
       - "!hardware"
+    provider: "{{ cli }}"
   register: result
 
 - assert:

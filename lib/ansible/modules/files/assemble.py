@@ -1,27 +1,18 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# (c) 2012, Stephen Fromm <sfromm@gmail.com>
-# (c) 2016, Toshio Kuratomi <tkuratomi@ansible.com>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2012, Stephen Fromm <sfromm@gmail.com>
+# Copyright: (c) 2016, Toshio Kuratomi <tkuratomi@ansible.com>
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'core',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'core'}
+
 
 DOCUMENTATION = '''
 ---
@@ -31,7 +22,7 @@ description:
      - Assembles a configuration file from fragments. Often a particular
        program will take a single configuration file and does not support a
        C(conf.d) style structure where it is easy to build up the configuration
-       from multiple sources. M(assemble) will take a directory of files that can be
+       from multiple sources. C(assemble) will take a directory of files that can be
        local or have already been transferred to the system, and concatenate them
        together to produce a destination file. Files are assembled in string sorting order.
        Puppet calls this idea I(fragments).
@@ -95,6 +86,7 @@ options:
 author: "Stephen Fromm (@sfromm)"
 extends_documentation_fragment:
     - files
+    - decrypt
 '''
 
 EXAMPLES = '''
@@ -123,8 +115,8 @@ import re
 import tempfile
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 from ansible.module_utils.six import b
+from ansible.module_utils._text import to_native
 
 
 # ===========================================
@@ -140,7 +132,7 @@ def assemble_from_fragments(src_path, delimiter=None, compiled_regexp=None, igno
     for f in sorted(os.listdir(src_path)):
         if compiled_regexp and not compiled_regexp.search(f):
             continue
-        fragment = u"%s/%s" % (src_path, f)
+        fragment = os.path.join(src_path, f)
         if not os.path.isfile(fragment) or (ignore_hidden and os.path.basename(fragment).startswith('.')):
             continue
         fragment_content = open(fragment, 'rb').read()
@@ -176,11 +168,10 @@ def cleanup(path, result=None):
     if os.path.exists(path):
         try:
             os.remove(path)
-        except (IOError, OSError):
-            e = get_exception()
+        except (IOError, OSError) as e:
             # don't error on possible race conditions, but keep warning
             if result is not None:
-                result['warnings'] = ['Unable to remove temp file (%s): %s' % (path, str(e))]
+                result['warnings'] = ['Unable to remove temp file (%s): %s' % (path, to_native(e))]
 
 
 def main():
@@ -188,9 +179,9 @@ def main():
     module = AnsibleModule(
         # not checking because of daisy chain to file module
         argument_spec = dict(
-            src = dict(required=True),
+            src = dict(required=True, type='path'),
             delimiter = dict(required=False),
-            dest = dict(required=True),
+            dest = dict(required=True, type='path'),
             backup=dict(default=False, type='bool'),
             remote_src=dict(default=False, type='bool'),
             regexp = dict(required=False),
@@ -203,8 +194,8 @@ def main():
     changed   = False
     path_hash   = None
     dest_hash   = None
-    src       = os.path.expanduser(module.params['src'])
-    dest      = os.path.expanduser(module.params['dest'])
+    src       = module.params['src']
+    dest      = module.params['dest']
     backup    = module.params['backup']
     delimiter = module.params['delimiter']
     regexp    = module.params['regexp']
@@ -222,9 +213,8 @@ def main():
     if regexp is not None:
         try:
             compiled_regexp = re.compile(regexp)
-        except re.error:
-            e = get_exception()
-            module.fail_json(msg="Invalid Regexp (%s) in \"%s\"" % (e, regexp))
+        except re.error as e:
+            module.fail_json(msg="Invalid Regexp (%s) in \"%s\"" % (to_native(e), regexp))
 
     if validate and "%s" not in validate:
         module.fail_json(msg="validate must contain %%s: %s" % validate)

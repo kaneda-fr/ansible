@@ -4,9 +4,9 @@
 
 - name: test getting all facts
   ios_facts:
-    provider: "{{ cli }}"
     gather_subset:
       - all
+    provider: "{{ cli }}"
   register: result
 
 

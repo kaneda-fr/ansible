@@ -1,31 +1,22 @@
 #!/usr/bin/python
 #
 # (c) 2013, Nimbis Services
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['deprecated'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['deprecated'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
 module: ec2_ami_search
 short_description: Retrieve AWS AMI information for a given operating system.
-deprecated: "in favor of the ec2_ami_find module"
+deprecated: "Use M(ec2_ami_find) instead."
 version_added: "1.6"
 description:
   - Look up the most recent AMI on AWS for a given operating system.
@@ -61,8 +52,9 @@ options:
     required: false
     default: us-east-1
     choices: ["ap-northeast-1", "ap-southeast-1", "ap-northeast-2",
-              "ap-southeast-2", "eu-central-1", "eu-west-1", "sa-east-1",
-              "us-east-1", "us-west-1", "us-west-2", "us-gov-west-1"]
+              "ap-southeast-2", "ca-central-1", "eu-central-1", "eu-west-1",
+              "eu-west-2", "sa-east-1", "us-east-1", "us-east-2", "us-west-1",
+              "us-west-2", "us-gov-west-1"]
   virt:
     description: virutalization type
     required: false
@@ -93,8 +85,10 @@ EXAMPLES = '''
 '''
 
 import csv
-import json
-import urlparse
+
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.urls import fetch_url
+
 
 SUPPORTED_DISTROS = ['ubuntu']
 
@@ -103,10 +97,13 @@ AWS_REGIONS = ['ap-northeast-1',
                'ap-northeast-2',
                'ap-southeast-2',
                'ap-south-1',
+               'ca-central-1',
                'eu-central-1',
                'eu-west-1',
+               'eu-west-2',
                'sa-east-1',
                'us-east-1',
+               'us-east-2',
                'us-west-1',
                'us-west-2',
                "us-gov-west-1"]
@@ -205,11 +202,6 @@ def main():
     else:
         module.fail_json(msg="Unsupported distro: %s" % distro)
 
-
-
-# this is magic, see lib/ansible/module_common.py
-from ansible.module_utils.basic import *
-from ansible.module_utils.urls import *
 
 if __name__ == '__main__':
     main()

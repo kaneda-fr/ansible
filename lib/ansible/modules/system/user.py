@@ -2,25 +2,16 @@
 # -*- coding: utf-8 -*-
 
 # (c) 2012, Stephen Fromm <sfromm@gmail.com>
-#
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'core',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'core'}
+
 
 DOCUMENTATION = '''
 ---
@@ -28,9 +19,14 @@ module: user
 author: "Stephen Fromm (@sfromm)"
 version_added: "0.2"
 short_description: Manage user accounts
-requirements: [ useradd, userdel, usermod ]
+notes:
+  - There are specific requirements per platform on user management utilities. However
+    they generally come pre-installed with the system and Ansible will require they
+    are present at runtime. If they are not, a descriptive error message will be shown.
+  - For Windows targets, use the M(win_user) module instead.
 description:
     - Manage user accounts and user attributes.
+    - For Windows targets, use the M(win_user) module instead.
 options:
     name:
         required: true
@@ -201,6 +197,15 @@ options:
         description:
             - An expiry time for the user in epoch, it will be ignored on platforms that do not support this.
               Currently supported on Linux and FreeBSD.
+    local:
+        version_added: "2.4"
+        required: false
+        default: "False"
+        description:
+            - Forces the use of "local" command alternatives on platforms that implement it.
+              This is useful in environments that use centralized authentification when you want to manipulate the local users.
+              I.E. it uses `luseradd` instead of `useradd`.
+            - This requires that these commands exist on the targeted host, otherwise it will be a fatal error.
 '''
 
 EXAMPLES = '''
@@ -256,7 +261,6 @@ try:
 except:
     HAVE_SPWD=False
 
-
 class User(object):
     """
     This is a generic User manipulation class that is subclassed
@@ -309,6 +313,7 @@ class User(object):
         self.home    = module.params['home']
         self.expires = None
         self.groups = None
+        self.local = module.params['local']
 
         if module.params['groups'] is not None:
             self.groups = ','.join(module.params['groups'])
@@ -318,7 +323,7 @@ class User(object):
                 self.expires = time.gmtime(module.params['expires'])
             except Exception:
                 e = get_exception()
-                module.fail_json("Invalid expires time %s: %s" %(self.expires, str(e)))
+                module.fail_json(msg="Invalid expires time %s: %s" %(self.expires, str(e)))
 
         if module.params['ssh_key_file'] is not None:
             self.ssh_file = module.params['ssh_key_file']
@@ -336,7 +341,12 @@ class User(object):
             return self.module.run_command(cmd, use_unsafe_shell=use_unsafe_shell, data=data)
 
     def remove_user_userdel(self):
-        cmd = [self.module.get_bin_path('userdel', True)]
+        if self.local:
+            command_name = 'luserdel'
+        else:
+            command_name = 'userdel'
+
+        cmd = [self.module.get_bin_path(command_name, True)]
         if self.force:
             cmd.append('-f')
         if self.remove:
@@ -345,7 +355,13 @@ class User(object):
 
         return self.execute_command(cmd)
 
-    def create_user_useradd(self, command_name='useradd'):
+    def create_user_useradd(self):
+
+        if self.local:
+            command_name = 'luseradd'
+        else:
+            command_name = 'useradd'
+
         cmd = [self.module.get_bin_path(command_name, True)]
 
         if self.uid is not None:
@@ -365,8 +381,8 @@ class User(object):
             cmd.append(self.group)
         elif self.group_exists(self.name):
             # use the -N option (no user group) if a group already
-            # exists with the same name as the user to prevent 
-            # errors from useradd trying to create a group when 
+            # exists with the same name as the user to prevent
+            # errors from useradd trying to create a group when
             # USERGROUPS_ENAB is set in /etc/login.defs.
             if os.path.exists('/etc/redhat-release'):
                 dist = platform.dist()
@@ -396,7 +412,7 @@ class User(object):
             cmd.append(self.shell)
 
         if self.expires:
-            cmd.append('--expiredate')
+            cmd.append('-e')
             cmd.append(time.strftime(self.DATE_FORMAT, self.expires))
 
         if self.password is not None:
@@ -421,7 +437,13 @@ class User(object):
 
     def _check_usermod_append(self):
         # check if this version of usermod can append groups
-        usermod_path = self.module.get_bin_path('usermod', True)
+
+        if self.local:
+            command_name = 'lusermod'
+        else:
+            command_name = 'usermod'
+
+        usermod_path = self.module.get_bin_path(command_name, True)
 
         # for some reason, usermod --help cannot be used by non root
         # on RH/Fedora, due to lack of execute bit for others
@@ -443,7 +465,13 @@ class User(object):
 
 
     def modify_user_usermod(self):
-        cmd = [self.module.get_bin_path('usermod', True)]
+
+        if self.local:
+            command_name = 'lusermod'
+        else:
+            command_name = 'usermod'
+
+        cmd = [self.module.get_bin_path(command_name, True)]
         info = self.user_info()
         has_append = self._check_usermod_append()
 
@@ -509,7 +537,7 @@ class User(object):
             cmd.append(self.shell)
 
         if self.expires:
-            cmd.append('--expiredate')
+            cmd.append('-e')
             cmd.append(time.strftime(self.DATE_FORMAT, self.expires))
 
         if self.update_password == 'always' and self.password is not None and info[1] != self.password:
@@ -548,8 +576,8 @@ class User(object):
         if self.groups is None:
             return None
         info = self.user_info()
-        groups = set(filter(None, self.groups.split(',')))
-        for g in set(groups):
+        groups = set(x.strip() for x in self.groups.split(',') if x)
+        for g in groups.copy():
             if not self.group_exists(g):
                 self.module.fail_json(msg="Group %s does not exist" % (g))
             if info and remove_existing and self.group_info(g)[2] == info[3]:
@@ -715,7 +743,7 @@ class User(object):
             os.chown(path, uid, gid)
             for root, dirs, files in os.walk(path):
                 for d in dirs:
-                    os.chown(path, uid, gid)
+                    os.chown(os.path.join(root, d), uid, gid)
                 for f in files:
                     os.chown(os.path.join(root, f), uid, gid)
         except OSError:
@@ -803,7 +831,7 @@ class FreeBsdUser(User):
             cmd.append(self.login_class)
 
         if self.expires:
-            days =( time.mktime(self.expires) - time.time() ) / 86400
+            days =( time.mktime(self.expires) - time.time() ) // 86400
             cmd.append('-e')
             cmd.append(str(int(days)))
 
@@ -901,7 +929,7 @@ class FreeBsdUser(User):
                 cmd.append(','.join(new_groups))
 
         if self.expires:
-            days = ( time.mktime(self.expires) - time.time() ) / 86400
+            days = ( time.mktime(self.expires) - time.time() ) // 86400
             cmd.append('-e')
             cmd.append(str(int(days)))
 
@@ -919,7 +947,7 @@ class FreeBsdUser(User):
                 self.module.get_bin_path('chpass', True),
                 '-p',
                 self.password,
-                self.name 
+                self.name
             ]
             return self.execute_command(cmd)
 
@@ -1024,7 +1052,7 @@ class OpenBSDUser(User):
         if self.groups is not None:
             current_groups = self.user_group_membership()
             groups_need_mod = False
-            groups_option = '-G'
+            groups_option = '-S'
             groups = []
 
             if self.groups == '':
@@ -1038,7 +1066,7 @@ class OpenBSDUser(User):
                     if self.append:
                         for g in groups:
                             if g in group_diff:
-                                groups_option = '-S'
+                                groups_option = '-G'
                                 groups_need_mod = True
                                 break
                     else:
@@ -1255,7 +1283,7 @@ class SunOS(User):
     """
     This is a SunOS User manipulation class - The main difference between
     this class and the generic user class is that Solaris-type distros
-    don't support the concept of a "system" account and we need to 
+    don't support the concept of a "system" account and we need to
     edit the /etc/shadow file manually to set a password. (Ugh)
 
     This overrides the following methods from the generic class:-
@@ -1352,12 +1380,13 @@ class SunOS(User):
                 try:
                     lines = []
                     for line in open(self.SHADOWFILE, 'rb').readlines():
+                        line = to_native(line, errors='surrogate_or_strict')
                         fields = line.strip().split(':')
                         if not fields[0] == self.name:
                             lines.append(line)
                             continue
                         fields[1] = self.password
-                        fields[2] = str(int(time.time() / 86400))
+                        fields[2] = str(int(time.time() // 86400))
                         if minweeks:
                             fields[3] = str(int(minweeks) * 7)
                         if maxweeks:
@@ -1416,8 +1445,8 @@ class SunOS(User):
                 cmd.append(','.join(new_groups))
 
         if self.comment is not None and info[4] != self.comment:
-                cmd.append('-c')
-                cmd.append(self.comment)
+            cmd.append('-c')
+            cmd.append(self.comment)
 
         if self.home is not None and info[5] != self.home:
             if self.move_home:
@@ -1446,12 +1475,13 @@ class SunOS(User):
                 try:
                     lines = []
                     for line in open(self.SHADOWFILE, 'rb').readlines():
+                        line = to_native(line, errors='surrogate_or_strict')
                         fields = line.strip().split(':')
                         if not fields[0] == self.name:
                             lines.append(line)
                             continue
                         fields[1] = self.password
-                        fields[2] = str(int(time.time() / 86400))
+                        fields[2] = str(int(time.time() // 86400))
                         if minweeks:
                             fields[3] = str(int(minweeks) * 7)
                         if maxweeks:
@@ -1560,7 +1590,7 @@ class DarwinUser(User):
             if max_uid < current_uid:
                 max_uid = current_uid
             if max_system_uid < current_uid and current_uid < 500:
-                    max_system_uid = current_uid
+                max_system_uid = current_uid
 
         if system and (0 < max_system_uid < 499):
             return max_system_uid + 1
@@ -1648,7 +1678,7 @@ class DarwinUser(User):
     def _update_system_user(self):
         '''Hide or show user on login window according SELF.SYSTEM.
 
-        Returns 0 if a change has been made, None otherwhise.'''
+        Returns 0 if a change has been made, None otherwise.'''
 
         plist_file = '/Library/Preferences/com.apple.loginwindow.plist'
 
@@ -1874,7 +1904,7 @@ class AIX(User):
             cmd.append(self.module.get_bin_path('chpasswd', True))
             cmd.append('-e')
             cmd.append('-c')
-            self.execute_command(' '.join(cmd), data="%s:%s" % (self.name, self.password))
+            self.execute_command(cmd, data="%s:%s" % (self.name, self.password))
 
         return (rc, out, err)
 
@@ -1920,8 +1950,8 @@ class AIX(User):
                 cmd.append(','.join(groups))
 
         if self.comment is not None and info[4] != self.comment:
-                cmd.append('-c')
-                cmd.append(self.comment)
+            cmd.append('-c')
+            cmd.append(self.comment)
 
         if self.home is not None and info[5] != self.home:
             if self.move_home:
@@ -1946,11 +1976,11 @@ class AIX(User):
             cmd.append(self.module.get_bin_path('chpasswd', True))
             cmd.append('-e')
             cmd.append('-c')
-            (rc2, out2, err2) = self.execute_command(' '.join(cmd), data="%s:%s" % (self.name, self.password))
+            (rc2, out2, err2) = self.execute_command(cmd, data="%s:%s" % (self.name, self.password))
         else:
             (rc2, out2, err2) = (None, '', '')
 
-        if rc != None:
+        if rc is not None:
             return (rc, out+out2, err+err2)
         else:
             return (rc2, out+out2, err+err2)
@@ -2064,20 +2094,17 @@ class HPUX(User):
                     if self.append:
                         for g in groups:
                             if g in group_diff:
-                                if has_append:
-                                    cmd.append('-a')
                                 groups_need_mod = True
                                 break
                     else:
                         groups_need_mod = True
 
             if groups_need_mod:
-                if self.append and not has_append:
-                    cmd.append('-A')
-                    cmd.append(','.join(group_diff))
-                else:
-                    cmd.append('-G')
-                    cmd.append(','.join(groups))
+                cmd.append('-G')
+                new_groups = groups
+                if self.append:
+                    new_groups = groups | set(current_groups)
+                cmd.append(','.join(new_groups))
 
 
         if self.comment is not None and info[4] != self.comment:
@@ -2109,10 +2136,10 @@ class HPUX(User):
 
 def main():
     ssh_defaults = {
-            'bits': 0,
-            'type': 'rsa',
-            'passphrase': None,
-            'comment': 'ansible-generated on %s' % socket.gethostname()
+        'bits': 0,
+        'type': 'rsa',
+        'passphrase': None,
+        'comment': 'ansible-generated on %s' % socket.gethostname()
     }
     module = AnsibleModule(
         argument_spec = dict(
@@ -2148,6 +2175,7 @@ def main():
             ssh_key_passphrase=dict(default=None, type='str', no_log=True),
             update_password=dict(default='always',choices=['always','on_create'],type='str'),
             expires=dict(default=None, type='float'),
+            local=dict(type='bool'),
         ),
         supports_check_mode=True
     )
@@ -2204,7 +2232,7 @@ def main():
 
     if user.user_exists():
         info = user.user_info()
-        if info == False:
+        if info is False:
             result['msg'] = "failed to look up user name: %s" % user.name
             result['failed'] = True
         result['uid'] = info[2]

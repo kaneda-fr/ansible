@@ -6,8 +6,8 @@
     lines:
       - 'no ip access-list extended test'
       - 'no ip access-list standard test'
-    provider: "{{ cli }}"
     match: none
+    provider: "{{ cli }}"
 
 - name: configure sub level command
   ios_config:
@@ -37,7 +37,7 @@
   ios_config:
     lines:
       - 'no ip access-list extended test'
-    provider: "{{ cli }}"
     match: none
+    provider: "{{ cli }}"
 
 - debug: msg="END cli/sublevel.yaml"

@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -72,7 +64,7 @@ options:
     description:
     - List of Base-64 encoded server certificates.
     - If option is omitted certificates will not be checked or changed.
-    - If an emtpy list is passed all assigned certificates will be removed.
+    - If an empty list is passed all assigned certificates will be removed.
     - Certificates already assigned but not passed will be removed.
     required: false
     aliases: ["usercertificate"]
@@ -164,10 +156,14 @@ host_diff:
   type: list
 '''
 
+import traceback
+
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class HostIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(HostIPAClient, self).__init__(module, host, port, protocol)
 
@@ -209,27 +205,17 @@ def get_host_dict(description=None, force=None, ip_address=None, ns_host_locatio
     return data
 
 
-def get_host_diff(ipa_host, module_host):
+def get_host_diff(client, ipa_host, module_host):
     non_updateable_keys = ['force', 'ip_address']
-    data = []
     for key in non_updateable_keys:
         if key in module_host:
             del module_host[key]
-    for key in module_host.keys():
-        ipa_value = ipa_host.get(key, None)
-        module_value = module_host.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(module_value, list):
-            module_value = [module_value]
-        if isinstance(ipa_value, list) and isinstance(module_value, list):
-            ipa_value = sorted(ipa_value)
-            module_value = sorted(module_value)
-        if ipa_value != module_value:
-            data.append(key)
-    return data
+
+    return client.get_diff(ipa_data=ipa_host, module_data=module_host)
 
 
 def ensure(module, client):
-    name = module.params['name']
+    name = module.params['fqdn']
     state = module.params['state']
 
     ipa_host = client.host_find(name=name)
@@ -247,7 +233,7 @@ def ensure(module, client):
             if not module.check_mode:
                 client.host_add(name=name, host=module_host)
         else:
-            diff = get_host_diff(ipa_host, module_host)
+            diff = get_host_diff(client, ipa_host, module_host)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -299,13 +285,8 @@ def main():
                      password=module.params['ipa_pass'])
         changed, host = ensure(module, client)
         module.exit_json(changed=changed, host=host)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
-
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
 if __name__ == '__main__':
     main()

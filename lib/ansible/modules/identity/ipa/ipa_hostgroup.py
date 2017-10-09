@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -117,10 +109,14 @@ hostgroup:
   type: dict
 '''
 
+import traceback
+
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class HostGroupIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(HostGroupIPAClient, self).__init__(module, host, port, protocol)
 
@@ -162,39 +158,12 @@ def get_hostgroup_dict(description=None):
     return data
 
 
-def get_hostgroup_diff(ipa_hostgroup, module_hostgroup):
-    data = []
-    for key in module_hostgroup.keys():
-        ipa_value = ipa_hostgroup.get(key, None)
-        module_value = module_hostgroup.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(module_value, list):
-            module_value = [module_value]
-        if isinstance(ipa_value, list) and isinstance(module_value, list):
-            ipa_value = sorted(ipa_value)
-            module_value = sorted(module_value)
-        if ipa_value != module_value:
-            data.append(key)
-    return data
-
-
-def modify_if_diff(module, name, ipa_list, module_list, add_method, remove_method):
-    changed = False
-    diff = list(set(ipa_list) - set(module_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            remove_method(name=name, item=diff)
-
-    diff = list(set(module_list) - set(ipa_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            add_method(name=name, item=diff)
-    return changed
+def get_hostgroup_diff(client, ipa_hostgroup, module_hostgroup):
+    return client.get_diff(ipa_data=ipa_hostgroup, module_data=module_hostgroup)
 
 
 def ensure(module, client):
-    name = module.params['name']
+    name = module.params['cn']
     state = module.params['state']
     host = module.params['host']
     hostgroup = module.params['hostgroup']
@@ -209,7 +178,7 @@ def ensure(module, client):
             if not module.check_mode:
                 ipa_hostgroup = client.hostgroup_add(name=name, item=module_hostgroup)
         else:
-            diff = get_hostgroup_diff(ipa_hostgroup, module_hostgroup)
+            diff = get_hostgroup_diff(client, ipa_hostgroup, module_hostgroup)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -219,14 +188,14 @@ def ensure(module, client):
                     client.hostgroup_mod(name=name, item=data)
 
         if host is not None:
-            changed = modify_if_diff(module, name, ipa_hostgroup.get('member_host', []),
-                                     [item.lower() for item in host],
-                                     client.hostgroup_add_host, client.hostgroup_remove_host) or changed
+            changed = client.modify_if_diff(name, ipa_hostgroup.get('member_host', []), [item.lower() for item in host],
+                                            client.hostgroup_add_host, client.hostgroup_remove_host) or changed
 
         if hostgroup is not None:
-            changed = modify_if_diff(module, name, ipa_hostgroup.get('member_hostgroup', []),
-                                     [item.lower() for item in hostgroup],
-                                     client.hostgroup_add_hostgroup, client.hostgroup_remove_hostgroup) or changed
+            changed = client.modify_if_diff(name, ipa_hostgroup.get('member_hostgroup', []),
+                                            [item.lower() for item in hostgroup],
+                                            client.hostgroup_add_hostgroup,
+                                            client.hostgroup_remove_hostgroup) or changed
 
     else:
         if ipa_hostgroup:
@@ -266,13 +235,9 @@ def main():
                      password=module.params['ipa_pass'])
         changed, hostgroup = ensure(module, client)
         module.exit_json(changed=changed, hostgroup=hostgroup)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 
 if __name__ == '__main__':
     main()

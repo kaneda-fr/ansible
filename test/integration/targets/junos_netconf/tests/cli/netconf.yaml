@@ -5,13 +5,11 @@
 - name: Ensure netconf is enabled
   junos_netconf:
     state: present
-    provider: "{{ cli }}"
   register: result
 
 - name: idempotent tests
   junos_netconf:
     state: present
-    provider: "{{ cli }}"
   register: result
 
 - assert:
@@ -21,9 +19,8 @@
 ###################################
 
 - name: Ensure we can communicate over netconf
-  junos_config:
-    lines:
-      - set system host-name {{ inventory_hostname }}
+  junos_command:
+    rpcs: get-software-information
     provider: "{{ netconf }}"
 
 # Disable netconf
@@ -31,7 +28,6 @@
 - name: Disable netconf
   junos_netconf:
     state: absent
-    provider: "{{ cli }}"
   register: result
 
 - assert:
@@ -41,18 +37,19 @@
 - name: idempotent tests
   junos_netconf:
     state: absent
-    provider: "{{ cli }}"
   register: result
 
 - assert:
     that:
       - "result.changed == false"
 
+- name: wait for persistent socket to timeout
+  pause:
+    seconds: 120
 
 - name: Ensure we can NOT talk via netconf
-  junos_config:
-    lines:
-      - set system host-name {{ inventory_hostname }}
+  junos_command:
+    rpcs: get-software-information
     provider: "{{ netconf }}"
   register: result
   ignore_errors: true
@@ -60,12 +57,11 @@
 - assert:
     that:
       - "result.failed == true"
-      - "'unable to connect to' in result.msg"
+      - "'unable to open shell' in result.msg"
 
 - name: re-enable netconf
   junos_netconf:
     state: present
-    provider: "{{ cli }}"
   register: result
 
 
