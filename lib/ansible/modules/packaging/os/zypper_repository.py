@@ -4,25 +4,16 @@
 # (c) 2013, Matthias Vogelgesang <matthias.vogelgesang@gmail.com>
 # (c) 2014, Justin Lecher <jlec@gentoo.org>
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -87,7 +78,7 @@ options:
         version_added: "2.1"
     auto_import_keys:
         description:
-            - Automatically import the gpg signing key of the new or changed repository. 
+            - Automatically import the gpg signing key of the new or changed repository.
             - Has an effect only if state is I(present). Has no effect on existing (unchanged) repositories or in combination with I(absent).
             - Implies runrefresh.
         required: false
@@ -111,7 +102,7 @@ options:
         version_added: "2.2"
 
 
-requirements: 
+requirements:
     - "zypper >= 1.0  # included in openSuSE >= 11.1 or SuSE Linux Enterprise Server/Desktop >= 11.0"
     - python-xml
 '''
@@ -135,17 +126,17 @@ EXAMPLES = '''
 
 # Refresh all repos
 - zypper_repository:
-    repo: *
+    repo: '*'
     runrefresh: yes
 
 # Add a repo and add it's gpg key
 - zypper_repository:
     repo: 'http://download.opensuse.org/repositories/systemsmanagement/openSUSE_Leap_42.1/'
     auto_import_keys: yes
- 
+
 # Force refresh of a repository
 - zypper_repository:
-    repo: 'http://my_internal_ci_repo/repo
+    repo: 'http://my_internal_ci_repo/repo'
     name: my_ci_repo
     state: present
     runrefresh: yes
@@ -246,7 +237,7 @@ def addmodify_repo(module, repodata, old_repos, zypper_version, warnings):
         cmd.extend(['--name', repodata['name']])
 
     # priority on addrepo available since 1.12.25
-    # https://github.com/openSUSE/zypper/blob/b9b3cb6db76c47dc4c47e26f6a4d2d4a0d12b06d/package/zypper.changes#L327-L336 
+    # https://github.com/openSUSE/zypper/blob/b9b3cb6db76c47dc4c47e26f6a4d2d4a0d12b06d/package/zypper.changes#L327-L336
     if repodata['priority']:
         if zypper_version >= LooseVersion('1.12.25'):
             cmd.extend(['--priority', str(repodata['priority'])])

@@ -14,9 +14,10 @@
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'committer',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'certified'}
+
 
 DOCUMENTATION = '''
 ---
@@ -312,7 +313,7 @@ def ensure_present(ec2, module, domain, address, private_ip_address, device_id,
         if isinstance:
             instance = find_device(ec2, module, device_id)
             if reuse_existing_ip_allowed:
-                if len(instance.vpc_id) > 0 and domain is None:
+                if instance.vpc_id and len(instance.vpc_id) > 0 and domain is None:
                     raise EIPException("You must set 'in_vpc' to true to associate an instance with an existing ip in a vpc")
             # Associate address object (provided or allocated) with instance
             assoc_result = associate_ip_and_device(ec2, address, private_ip_address, device_id,
@@ -365,10 +366,7 @@ def main():
 
     module = AnsibleModule(
         argument_spec=argument_spec,
-        supports_check_mode=True,
-        required_together=[
-            ('device_id', 'private_ip_address'),
-        ]
+        supports_check_mode=True
     )
 
     if not HAS_BOTO:
@@ -385,6 +383,10 @@ def main():
     domain = 'vpc' if in_vpc else None
     reuse_existing_ip_allowed = module.params.get('reuse_existing_ip_allowed')
     release_on_disassociation = module.params.get('release_on_disassociation')
+
+    # Parameter checks
+    if private_ip_address is not None and device_id is None:
+        module.fail_json(msg="parameters are required together: ('device_id', 'private_ip_address')")
 
     if instance_id:
         warnings = ["instance_id is no longer used, please use device_id going forward"]

@@ -4,9 +4,9 @@
 
 - name: test invalid subset (foobar)
   ios_facts:
-    provider: "{{ cli }}"
     gather_subset:
       - "foobar"
+    provider: "{{ cli }}"
   register: result
   ignore_errors: true
 
@@ -26,10 +26,10 @@
 
 - name: test subset specified multiple times
   ios_facts:
-    provider: "{{ cli }}"
     gather_subset:
       - "!hardware"
       - "hardware"
+    provider: "{{ cli }}"
   register: result
   ignore_errors: true
 

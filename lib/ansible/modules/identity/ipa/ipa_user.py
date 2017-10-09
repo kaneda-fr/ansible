@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -142,11 +134,14 @@ user:
 
 import base64
 import hashlib
+import traceback
 
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class UserIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(UserIPAClient, self).__init__(module, host, port, protocol)
 
@@ -195,7 +190,7 @@ def get_user_dict(displayname=None, givenname=None, loginshell=None, mail=None, 
     return user
 
 
-def get_user_diff(ipa_user, module_user):
+def get_user_diff(client, ipa_user, module_user):
     """
         Return the keys of each dict whereas values are different. Unfortunately the IPA
         API returns everything as a list even if only a single value is possible.
@@ -207,8 +202,6 @@ def get_user_diff(ipa_user, module_user):
     :param module_user:
     :return:
     """
-    #    return [item for item in module_user.keys() if module_user.get(item, None) != ipa_user.get(item, None)]
-    result = []
     # sshpubkeyfp is the list of ssh key fingerprints. IPA doesn't return the keys itself but instead the fingerprints.
     # These are used for comparison.
     sshpubkey = None
@@ -217,16 +210,9 @@ def get_user_diff(ipa_user, module_user):
         # Remove the ipasshpubkey element as it is not returned from IPA but save it's value to be used later on
         sshpubkey = module_user['ipasshpubkey']
         del module_user['ipasshpubkey']
-    for key in module_user.keys():
-        mod_value = module_user.get(key, None)
-        ipa_value = ipa_user.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(mod_value, list):
-            mod_value = [mod_value]
-        if isinstance(ipa_value, list) and isinstance(mod_value, list):
-            mod_value = sorted(mod_value)
-            ipa_value = sorted(ipa_value)
-        if mod_value != ipa_value:
-            result.append(key)
+
+    result = client.get_diff(ipa_data=ipa_user, module_data=module_user)
+
     # If there are public keys, remove the fingerprints and add them back to the dict
     if sshpubkey is not None:
         del module_user['sshpubkeyfp']
@@ -258,7 +244,7 @@ def get_ssh_key_fingerprint(ssh_key):
 
 def ensure(module, client):
     state = module.params['state']
-    name = module.params['name']
+    name = module.params['uid']
     nsaccountlock = state == 'disabled'
 
     module_user = get_user_dict(displayname=module.params.get('displayname'),
@@ -278,7 +264,7 @@ def ensure(module, client):
             if not module.check_mode:
                 ipa_user = client.user_add(name=name, item=module_user)
         else:
-            diff = get_user_diff(ipa_user, module_user)
+            diff = get_user_diff(client, ipa_user, module_user)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -334,13 +320,9 @@ def main():
                      password=module.params['ipa_pass'])
         changed, user = ensure(module, client)
         module.exit_json(changed=changed, user=user)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 
 if __name__ == '__main__':
     main()

@@ -5,29 +5,20 @@
 # based on svr4pkg by
 #  Boyd Adamson <boyd () boydadamson.com> (2012)
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
-#
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
-module: pkgutil 
+module: pkgutil
 short_description: Manage CSW-Packages on Solaris
 description:
     - Manages CSW packages (SVR4 format) on Solaris 10 and 11.
@@ -112,7 +103,7 @@ def package_install(module, state, name, site, update_catalog):
     if site is not None:
         cmd += [ '-t', site ]
     if state == 'latest':
-        cmd += [ '-f' ] 
+        cmd += [ '-f' ]
     cmd.append(name)
     (rc, out, err) = run_command(module, cmd)
     return (rc, out, err)
@@ -186,7 +177,7 @@ def main():
         else:
             if not package_latest(module, name, site):
                 if module.check_mode:
-                    module.exit_json(changed=True) 
+                    module.exit_json(changed=True)
                 (rc, out, err) = package_upgrade(module, name, site, update_catalog)
                 if len(out) > 75:
                     out = out[:75] + '...'

@@ -3,38 +3,22 @@
 
 # (c) 2015-2016, Jiri Tyr <jiri.tyr@gmail.com>
 #
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
 
-import os
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
-from ansible.module_utils.six.moves import configparser
-
-
-ANSIBLE_METADATA = {'status': ['stableinterface'],
-                    'supported_by': 'core',
-                    'version': '1.0'}
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['stableinterface'],
+                    'supported_by': 'core'}
 
 DOCUMENTATION = '''
 ---
 module: yum_repository
 author: Jiri Tyr (@jtyr)
 version_added: '2.1'
-short_description: Add and remove YUM repositories
+short_description: Add or remove YUM repositories
 description:
   - Add or remove YUM repositories in RPM-based Linux distributions.
 
@@ -62,6 +46,7 @@ options:
     description:
       - URL to the directory where the yum repository's 'repodata' directory
         lives.
+      - It can also be a list of multiple URLs.
       - This or the I(mirrorlist) parameter is required if I(state) is set to
         C(present).
   cost:
@@ -145,6 +130,7 @@ options:
     default: null
     description:
       - A URL pointing to the ASCII-armored GPG key file for the repository.
+      - It can also be a list of multiple URLs.
   http_caching:
     required: false
     choices: [all, packages, none]
@@ -398,6 +384,8 @@ notes:
   - Parameters in a section are ordered alphabetically in an existing repo
     file.
   - The repo file will be automatically deleted if it contains no repository.
+  - When removing a repository, beware that the metadata cache may still remain
+    on disk until you run C(yum clean all). Use a notification handler for this.
 '''
 
 EXAMPLES = '''
@@ -424,10 +412,18 @@ EXAMPLES = '''
     mirrorlist: http://mirrorlist.repoforge.org/el7/mirrors-rpmforge
     enabled: no
 
-- name: Remove repository
+# Handler showing how to clean yum metadata cache
+- name: yum-clean-metadata
+  command: yum clean metadata
+  args:
+    warn: no
+
+# Example removing a repository and cleaning up metadata cache
+- name: Remove repository (and clean up left-over metadata)
   yum_repository:
     name: epel
     state: absent
+  notify: yum-clean-metadata
 
 - name: Remove repository from a specific repo file
   yum_repository:
@@ -467,6 +463,11 @@ state:
     type: string
     sample: "present"
 '''
+
+import os
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.pycompat24 import get_exception
+from ansible.module_utils.six.moves import configparser
 
 
 class YumRepo(object):
@@ -561,7 +562,7 @@ class YumRepo(object):
         # defined.
         if (self.params['baseurl'], self.params['mirrorlist']) == (None, None):
             self.module.fail_json(
-                msg='Paramater "baseurl" or "mirrorlist" is required for '
+                msg='Parameter "baseurl" or "mirrorlist" is required for '
                 'adding a new repo.')
 
         # Set options
@@ -635,7 +636,7 @@ def main():
         argument_spec=dict(
             async=dict(type='bool'),
             bandwidth=dict(),
-            baseurl=dict(),
+            baseurl=dict(type='list'),
             cost=dict(),
             deltarpm_metadata_percentage=dict(),
             deltarpm_percentage=dict(),
@@ -647,7 +648,7 @@ def main():
             file=dict(),
             gpgcakey=dict(),
             gpgcheck=dict(type='bool'),
-            gpgkey=dict(),
+            gpgkey=dict(type='list'),
             http_caching=dict(choices=['all', 'packages', 'none']),
             include=dict(),
             includepkgs=dict(),
@@ -716,6 +717,13 @@ def main():
     module.params['repoid'] = module.params['name']
     module.params['name'] = module.params['description']
     del module.params['description']
+
+    # Change list type to string for baseurl and gpgkey
+    for list_param in ['baseurl', 'gpgkey']:
+        if (
+                list_param in module.params and
+                module.params[list_param] is not None):
+            module.params[list_param] = "\n".join(module.params[list_param])
 
     # Define repo file name if it doesn't exist
     if module.params['file'] is None:

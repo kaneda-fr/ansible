@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -170,10 +162,14 @@ hbacrule:
   type: dict
 '''
 
+import traceback
+
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class HBACRuleIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(HBACRuleIPAClient, self).__init__(module, host, port, protocol)
 
@@ -233,40 +229,12 @@ def get_hbacrule_dict(description=None, hostcategory=None, ipaenabledflag=None, 
     return data
 
 
-def get_hbcarule_diff(ipa_hbcarule, module_hbcarule):
-    data = []
-    for key in module_hbcarule.keys():
-        module_value = module_hbcarule.get(key, None)
-        ipa_value = ipa_hbcarule.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(module_value, list):
-            module_value = [module_value]
-        if isinstance(ipa_value, list) and isinstance(module_value, list):
-            ipa_value = sorted(ipa_value)
-            module_value = sorted(module_value)
-        if ipa_value != module_value:
-            data.append(key)
-    return data
-
-
-def modify_if_diff(module, name, ipa_list, module_list, add_method, remove_method, item):
-    changed = False
-    diff = list(set(ipa_list) - set(module_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            remove_method(name=name, item={item: diff})
-
-    diff = list(set(module_list) - set(ipa_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            add_method(name=name, item={item: diff})
-
-    return changed
+def get_hbcarule_diff(client, ipa_hbcarule, module_hbcarule):
+    return client.get_diff(ipa_data=ipa_hbcarule, module_data=module_hbcarule)
 
 
 def ensure(module, client):
-    name = module.params['name']
+    name = module.params['cn']
     state = module.params['state']
 
     if state in ['present', 'enabled']:
@@ -302,7 +270,7 @@ def ensure(module, client):
             if not module.check_mode:
                 ipa_hbacrule = client.hbacrule_add(name=name, item=module_hbacrule)
         else:
-            diff = get_hbcarule_diff(ipa_hbacrule, module_hbacrule)
+            diff = get_hbcarule_diff(client, ipa_hbacrule, module_hbacrule)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -312,45 +280,45 @@ def ensure(module, client):
                     client.hbacrule_mod(name=name, item=data)
 
         if host is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberhost_host', []), host,
-                                     client.hbacrule_add_host,
-                                     client.hbacrule_remove_host, 'host') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberhost_host', []), host,
+                                            client.hbacrule_add_host,
+                                            client.hbacrule_remove_host, 'host') or changed
 
         if hostgroup is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberhost_hostgroup', []), hostgroup,
-                                     client.hbacrule_add_host,
-                                     client.hbacrule_remove_host, 'hostgroup') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberhost_hostgroup', []), hostgroup,
+                                            client.hbacrule_add_host,
+                                            client.hbacrule_remove_host, 'hostgroup') or changed
 
         if service is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberservice_hbacsvc', []), service,
-                                     client.hbacrule_add_service,
-                                     client.hbacrule_remove_service, 'hbacsvc') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberservice_hbacsvc', []), service,
+                                            client.hbacrule_add_service,
+                                            client.hbacrule_remove_service, 'hbacsvc') or changed
 
         if servicegroup is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberservice_hbacsvcgroup', []),
-                                     servicegroup,
-                                     client.hbacrule_add_service,
-                                     client.hbacrule_remove_service, 'hbacsvcgroup') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberservice_hbacsvcgroup', []),
+                                            servicegroup,
+                                            client.hbacrule_add_service,
+                                            client.hbacrule_remove_service, 'hbacsvcgroup') or changed
 
         if sourcehost is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('sourcehost_host', []), sourcehost,
-                                     client.hbacrule_add_sourcehost,
-                                     client.hbacrule_remove_sourcehost, 'host') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('sourcehost_host', []), sourcehost,
+                                            client.hbacrule_add_sourcehost,
+                                            client.hbacrule_remove_sourcehost, 'host') or changed
 
         if sourcehostgroup is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('sourcehost_group', []), sourcehostgroup,
-                                     client.hbacrule_add_sourcehost,
-                                     client.hbacrule_remove_sourcehost, 'hostgroup') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('sourcehost_group', []), sourcehostgroup,
+                                            client.hbacrule_add_sourcehost,
+                                            client.hbacrule_remove_sourcehost, 'hostgroup') or changed
 
         if user is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberuser_user', []), user,
-                                     client.hbacrule_add_user,
-                                     client.hbacrule_remove_user, 'user') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberuser_user', []), user,
+                                            client.hbacrule_add_user,
+                                            client.hbacrule_remove_user, 'user') or changed
 
         if usergroup is not None:
-            changed = modify_if_diff(module, name, ipa_hbacrule.get('memberuser_group', []), usergroup,
-                                     client.hbacrule_add_user,
-                                     client.hbacrule_remove_user, 'group') or changed
+            changed = client.modify_if_diff(name, ipa_hbacrule.get('memberuser_group', []), usergroup,
+                                            client.hbacrule_add_user,
+                                            client.hbacrule_remove_user, 'group') or changed
     else:
         if ipa_hbacrule:
             changed = True
@@ -399,13 +367,9 @@ def main():
                      password=module.params['ipa_pass'])
         changed, hbacrule = ensure(module, client)
         module.exit_json(changed=changed, hbacrule=hbacrule)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 
 if __name__ == '__main__':
     main()

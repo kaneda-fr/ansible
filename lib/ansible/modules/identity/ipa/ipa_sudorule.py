@@ -1,23 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# This file is part of Ansible
-#
-# Ansible is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# Ansible is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+# Copyright: (c) 2017, Ansible Project
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-ANSIBLE_METADATA = {'status': ['preview'],
-                    'supported_by': 'community',
-                    'version': '1.0'}
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
+
+ANSIBLE_METADATA = {'metadata_version': '1.1',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
+
 
 DOCUMENTATION = '''
 ---
@@ -118,7 +110,7 @@ version_added: "2.3"
 '''
 
 EXAMPLES = '''
-# Ensure sudo rule is present thats allows all every body to execute any command on any host without beeing asked for a password.
+# Ensure sudo rule is present that's allows all every body to execute any command on any host without being asked for a password.
 - ipa_sudorule:
     name: sudo_all_nopasswd
     cmdcategory: all
@@ -155,10 +147,14 @@ sudorule:
   type: dict
 '''
 
+import traceback
+
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.ipa import IPAClient
+from ansible.module_utils._text import to_native
+
 
 class SudoRuleIPAClient(IPAClient):
-
     def __init__(self, module, host, port, protocol):
         super(SudoRuleIPAClient, self).__init__(module, host, port, protocol)
 
@@ -205,7 +201,7 @@ class SudoRuleIPAClient(IPAClient):
         return self.sudorule_remove_host(name=name, item={'hostgroup': item})
 
     def sudorule_add_allow_command(self, name, item):
-        return self._post_json(method='sudorule_add_allow_command', name=name, item=item)
+        return self._post_json(method='sudorule_add_allow_command', name=name, item={'sudocmd': item})
 
     def sudorule_remove_allow_command(self, name, item):
         return self._post_json(method='sudorule_remove_allow_command', name=name, item=item)
@@ -244,40 +240,6 @@ def get_sudorule_dict(cmdcategory=None, description=None, hostcategory=None, ipa
     return data
 
 
-def get_sudorule_diff(ipa_sudorule, module_sudorule):
-    data = []
-    for key in module_sudorule.keys():
-        module_value = module_sudorule.get(key, None)
-        ipa_value = ipa_sudorule.get(key, None)
-        if isinstance(ipa_value, list) and not isinstance(module_value, list):
-            module_value = [module_value]
-        if isinstance(ipa_value, list) and isinstance(module_value, list):
-            ipa_value = sorted(ipa_value)
-            module_value = sorted(module_value)
-        if ipa_value != module_value:
-            data.append(key)
-    return data
-
-
-def modify_if_diff(module, name, ipa_list, module_list, add_method, remove_method):
-    changed = False
-    diff = list(set(ipa_list) - set(module_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            for item in diff:
-                remove_method(name=name, item=item)
-
-    diff = list(set(module_list) - set(ipa_list))
-    if len(diff) > 0:
-        changed = True
-        if not module.check_mode:
-            for item in diff:
-                add_method(name=name, item=item)
-
-    return changed
-
-
 def category_changed(module, client, category_name, ipa_sudorule):
     if ipa_sudorule.get(category_name, None) == ['all']:
         if not module.check_mode:
@@ -289,7 +251,7 @@ def category_changed(module, client, category_name, ipa_sudorule):
 
 def ensure(module, client):
     state = module.params['state']
-    name = module.params['name']
+    name = module.params['cn']
     cmd = module.params['cmd']
     cmdcategory = module.params['cmdcategory']
     host = module.params['host']
@@ -320,7 +282,7 @@ def ensure(module, client):
             if not module.check_mode:
                 ipa_sudorule = client.sudorule_add(name=name, item=module_sudorule)
         else:
-            diff = get_sudorule_diff(ipa_sudorule, module_sudorule)
+            diff = client.get_diff(ipa_sudorule, module_sudorule)
             if len(diff) > 0:
                 changed = True
                 if not module.check_mode:
@@ -340,29 +302,29 @@ def ensure(module, client):
 
         if host is not None:
             changed = category_changed(module, client, 'hostcategory', ipa_sudorule) or changed
-            changed = modify_if_diff(module, name, ipa_sudorule.get('memberhost_host', []), host,
-                                     client.sudorule_add_host_host,
-                                     client.sudorule_remove_host_host) or changed
+            changed = client.modify_if_diff(name, ipa_sudorule.get('memberhost_host', []), host,
+                                            client.sudorule_add_host_host,
+                                            client.sudorule_remove_host_host) or changed
 
         if hostgroup is not None:
             changed = category_changed(module, client, 'hostcategory', ipa_sudorule) or changed
-            changed = modify_if_diff(module, name, ipa_sudorule.get('memberhost_hostgroup', []), hostgroup,
-                                     client.sudorule_add_host_hostgroup,
-                                     client.sudorule_remove_host_hostgroup) or changed
+            changed = client.modify_if_diff(name, ipa_sudorule.get('memberhost_hostgroup', []), hostgroup,
+                                            client.sudorule_add_host_hostgroup,
+                                            client.sudorule_remove_host_hostgroup) or changed
         if sudoopt is not None:
-            changed = modify_if_diff(module, name, ipa_sudorule.get('ipasudoopt', []), sudoopt,
-                                     client.sudorule_add_option_ipasudoopt,
-                                     client.sudorule_remove_option_ipasudoopt) or changed
+            changed = client.modify_if_diff(name, ipa_sudorule.get('ipasudoopt', []), sudoopt,
+                                            client.sudorule_add_option_ipasudoopt,
+                                            client.sudorule_remove_option_ipasudoopt) or changed
         if user is not None:
             changed = category_changed(module, client, 'usercategory', ipa_sudorule) or changed
-            changed = modify_if_diff(module, name, ipa_sudorule.get('memberuser_user', []), user,
-                                     client.sudorule_add_user_user,
-                                     client.sudorule_remove_user_user) or changed
+            changed = client.modify_if_diff(name, ipa_sudorule.get('memberuser_user', []), user,
+                                            client.sudorule_add_user_user,
+                                            client.sudorule_remove_user_user) or changed
         if usergroup is not None:
             changed = category_changed(module, client, 'usercategory', ipa_sudorule) or changed
-            changed = modify_if_diff(module, name, ipa_sudorule.get('memberuser_group', []), usergroup,
-                                     client.sudorule_add_user_group,
-                                     client.sudorule_remove_user_group) or changed
+            changed = client.modify_if_diff(name, ipa_sudorule.get('memberuser_group', []), usergroup,
+                                            client.sudorule_add_user_group,
+                                            client.sudorule_remove_user_group) or changed
     else:
         if ipa_sudorule:
             changed = True
@@ -412,13 +374,9 @@ def main():
                      password=module.params['ipa_pass'])
         changed, sudorule = ensure(module, client)
         module.exit_json(changed=changed, sudorule=sudorule)
-    except Exception:
-        e = get_exception()
-        module.fail_json(msg=str(e))
+    except Exception as e:
+        module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
-
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.pycompat24 import get_exception
 
 if __name__ == '__main__':
     main()
