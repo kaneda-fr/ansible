@@ -156,7 +156,7 @@ VAPP_STATUS = {
 
 VAPP_STATES = ['present', 'absent', 'deployed', 'undeployed']
 VAPP_OPERATIONS = ['poweron', 'poweroff', 'suspend', 'shutdown',
-                   'reboot', 'reset', 'noop']
+                   'reboot', 'reset', 'noop', 'connectnetwork']
 
 
 def get_instance(module):
@@ -184,6 +184,7 @@ def create(module):
     vm_memory = module.params['vm_memory']
     deploy = module.params['state'] == 'deploy'
     poweron = module.params['operation'] == 'poweron'
+    connectnetwork = module.params['operation'] == 'connectnetwork'
 
     task = module.vca.create_vapp(vdc_name, vapp_name, template_name,
                                   catalog_name, network_name, network_mode,
@@ -194,6 +195,7 @@ def create(module):
     module.vca.block_until_completed(task)
 
     # Connect the network to the Vapp/VM and return asigned IP
+    #if (module.params['operation'] == 'connectnetwork'):
     if (network_name != None):
             vm_ip = connect_to_network(module, vdc_name, vapp_name, network_name, network_mode)
             return vm_ip
@@ -238,32 +240,32 @@ def set_state(module):
             module.fail('unable to undeploy vapp')
 
 def connect_to_network(module, vdc_name, vapp_name, network_name, network_mode):
-    
+
     nets = filter(lambda n: n.name == network_name, module.vca.get_networks(vdc_name))
     assert len(nets) == 1
     the_vdc = module.vca.get_vdc(vdc_name)
     the_vapp = module.vca.get_vapp(the_vdc, vapp_name)
     assert the_vapp
     assert the_vapp.name == vapp_name
-        
+
     # Connect vApp
     task = the_vapp.connect_to_network(nets[0].name, nets[0].href)
     result = module.vca.block_until_completed(task)
     assert result
-        
+
     # Connect VM
     if(network_mode == 'pool'):
         task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='POOL')
     else:
         if(network_mode == 'dhcp'):
             task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='DHCP')
-        
+
     assert task
     result = module.vca.block_until_completed(task)
     assert result
 
     #Update VApp info and get VM IP
-    the_vapp = module.vca.get_vapp(the_vdc, vapp_name) 
+    the_vapp = module.vca.get_vapp(the_vdc, vapp_name)
     assert the_vapp
 
     return get_vm_details(module)
@@ -281,7 +283,7 @@ def get_vm_details(module):
     for vm in the_vapp.me.Children.Vm:
         sections = vm.get_Section()
 
-        customization_section = ( 
+        customization_section = (
             filter(lambda section:
                    section.__class__.__name__ ==
                    "GuestCustomizationSectionType",
@@ -296,7 +298,7 @@ def get_vm_details(module):
                    sections)[0])
         items = virtualHardwareSection.get_Item()
         ips = []
-        _url = '{http://www.vmware.com/vcloud/v1.5}ipAddress' 
+        _url = '{http://www.vmware.com/vcloud/v1.5}ipAddress'
         for item in items:
             if item.Connection:
                 for c in item.Connection:
@@ -344,7 +346,7 @@ def main():
         if instance['state'] == 'absent':
             if not module.check_mode:
                 result['ansible_facts'] = create(module)
-            result['changed'] = True 
+            result['changed'] = True
 
         elif instance['state'] != state and state != 'present':
             if not module.check_mode:
