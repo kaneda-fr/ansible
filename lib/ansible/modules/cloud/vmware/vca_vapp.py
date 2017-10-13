@@ -172,8 +172,10 @@ def create(module):
     catalog_name = module.params['catalog_name']
     network_name = module.params['network_name']
     network_mode = module.params['network_mode']
+    network_interface = module.params['network_interface']
     vm_name = module.params['vm_name']
     vm_cpus = module.params['vm_cpus']
+    vm_ip = module.params['vm_ip']
     vm_memory = module.params['vm_memory']
     deploy = module.params['state'] == 'deploy'
     poweron = module.params['operation'] == 'poweron'
@@ -193,7 +195,7 @@ def create(module):
     # Connect the network to the Vapp/VM and return asigned IP
     #if (module.params['operation'] == 'connectnetwork'):
     if (network_name != None):
-            vm_ip = connect_to_network(module, vdc_name, vapp_name, network_name, network_mode)
+            vm_ip = connect_to_network(module, vdc_name, vapp_name, vm_name, network_name, network_mode, network_interface, vm_ip)
             return vm_ip
 
 
@@ -235,7 +237,7 @@ def set_state(module):
         if not vapp.undeploy(action):
             module.fail('unable to undeploy vapp')
 
-def connect_to_network(module, vdc_name, vapp_name, network_name, network_mode):
+def connect_to_network(module, vdc_name, vapp_name, vm_name, network_name, network_mode, network_interface=0, ip_address=None):
 
     nets = filter(lambda n: n.name == network_name, module.vca.get_networks(vdc_name))
     assert len(nets) == 1
