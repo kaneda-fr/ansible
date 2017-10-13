@@ -316,11 +316,16 @@ def main():
         catalog_name=dict(default='Public Catalog'),
         network_name=dict(),
         network_mode=dict(default='pool', choices=['dhcp', 'static', 'pool']),
+        network_interface=dict(type='int', default=0),
+        vm_ip=dict(),
         vm_name=dict(),
-        vm_cpus=dict(),
-        vm_memory=dict(),
+        vm_cpus=dict(type='int'),
+        vm_memory=dict(type='int'),
         operation=dict(default=DEFAULT_VAPP_OPERATION, choices=VAPP_OPERATIONS),
-        state=dict(default='present', choices=VAPP_STATES)
+        state=dict(default='present', choices=VAPP_STATES),
+        verify_certs=dict(type='bool', default=True),
+        pyvcloud_log=dict(type='bool', default=False)
+
     )
 
     module = VcaAnsibleModule(argument_spec=argument_spec,
