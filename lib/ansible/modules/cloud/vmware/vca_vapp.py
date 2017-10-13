@@ -249,12 +249,16 @@ def connect_to_network(module, vdc_name, vapp_name, network_name, network_mode):
     result = module.vca.block_until_completed(task)
     assert result
 
-    # Connect VM
+    # Connect VM Network
     if(network_mode == 'pool'):
-        task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='POOL')
+        task = the_vapp.connect_vms(nets[0].name, connection_index=network_interface, ip_allocation_mode='POOL', )
+        #task = the_vapp.connect_vm(vm_name, nets[0].name, connections_primary_index=network_interface, connection_index=network_interface, ip_allocation_mode='POOL', )
+    elif(network_mode == 'dhcp'):
+            task = the_vapp.connect_vm(vm_name, nets[0].name, connection_index=network_interface, ip_allocation_mode='DHCP', )
+    elif(network_mode == 'static'):
+        task = the_vapp.connect_vm(vm_name, nets[0].name, connection_index=network_interface, ip_allocation_mode='MANUAL', ip_address=vm_ip)
     else:
-        if(network_mode == 'dhcp'):
-            task = the_vapp.connect_vms(nets[0].name, connection_index=0, ip_allocation_mode='DHCP')
+        module.fail('Invalid network_mode: ' + str(network_mode))
 
     assert task
     result = module.vca.block_until_completed(task)
