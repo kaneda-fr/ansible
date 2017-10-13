@@ -50,7 +50,8 @@ def vca_argument_spec():
         service_type=dict(default=DEFAULT_SERVICE_TYPE, choices=SERVICE_MAP.keys()),
         vdc_name=dict(),
         gateway_name=dict(default='gateway'),
-        verify_certs=dict(type='bool', default=True)
+        verify_certs=dict(type='bool', default=True),
+        pyvcloud_log=dict(type='bool', default=False)
     )
 
 
@@ -127,10 +128,11 @@ class VcaAnsibleModule(AnsibleModule):
             version = '5.6'
 
         verify = self.params.get('verify_certs')
+        log = self.params.get('pyvcloud_log')
 
         return VCA(host=host, username=username,
                    service_type=SERVICE_MAP[service_type],
-                   version=version, verify=verify)
+                   version=version, verify=verify, log=log)
 
     def login(self):
         service_type = self.params['service_type']
