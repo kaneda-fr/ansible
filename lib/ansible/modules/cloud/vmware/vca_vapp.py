@@ -120,6 +120,7 @@ options:
       - The name of the virtual data center (VDC) where the vm should be created or contains the vAPP.
     required: false
     default: None
+extends_documentation_fragment: vca
 '''
 
 EXAMPLES = '''
@@ -165,6 +166,7 @@ def get_instance(module):
     except VcaError:
         return inst
 
+
 def create(module):
     vdc_name = module.params['vdc_name']
     vapp_name = module.params['vapp_name']
@@ -193,16 +195,15 @@ def create(module):
     module.vca.block_until_completed(task)
 
     # Connect the network to the Vapp/VM and return asigned IP
-    #if (module.params['operation'] == 'connectnetwork'):
     if (network_name != None):
-            vm_ip = connect_to_network(module, vdc_name, vapp_name, vm_name, network_name, network_mode, network_interface, vm_ip)
+            vm_ip = connect_to_network(module, vdc_name, vapp_name, network_name, network_mode)
             return vm_ip
-
 
 def delete(module):
     vdc_name = module.params['vdc_name']
     vapp_name = module.params['vapp_name']
     module.vca.delete_vapp(vdc_name, vapp_name)
+
 
 def do_operation(module):
     vapp_name = module.params['vapp_name']
@@ -220,6 +221,7 @@ def do_operation(module):
 
     cmd = 'power:%s' % operation
     module.get_vapp(vapp_name).execute(cmd, 'post', targetVM=vm)
+
 
 def set_state(module):
     state = module.params['state']

@@ -161,14 +161,14 @@ def optionDict(line, iface, option, value):
 
 
 def getValueFromLine(s):
-    spaceRe = re.compile('\s+')
+    spaceRe = re.compile(r'\s+')
     for m in spaceRe.finditer(s):
         pass
     valueEnd = m.start()
     option = s.split()[0]
     optionStart = s.find(option)
     optionLen = len(option)
-    valueStart = re.search('\s', s[optionLen + optionStart:]).end() + optionLen + optionStart
+    valueStart = re.search(r'\s', s[optionLen + optionStart:]).end() + optionLen + optionStart
     return s[valueStart:valueEnd]
 
 
@@ -208,14 +208,15 @@ def read_interfaces_lines(module, line_strings):
                 "down": [],
                 "post-up": []
             }
-            iface_name, address_family_name, method_name = words[1:4]
-            if len(words) != 4:
-                module.fail_json(msg="Incorrect number of parameters (%d) in line %d, must be exectly 3" % (len(words), i))
-                # TODO: put line and count parameters
-                return None, None
-
-            currif['address_family'] = address_family_name
-            currif['method'] = method_name
+            iface_name = words[1]
+            try:
+                currif['address_family'] = words[2]
+            except IndexError:
+                currif['address_family'] = None
+            try:
+                currif['method'] = words[3]
+            except IndexError:
+                currif['method'] = None
 
             ifaces[iface_name] = currif
             lines.append({'line': line, 'iface': iface_name, 'line_type': 'iface', 'params': currif})
@@ -286,7 +287,7 @@ def setInterfaceOption(module, lines, iface, option, raw_value, state):
                     old_value = target_option['value']
                     prefix_start = old_line.find(option)
                     optionLen = len(option)
-                    old_value_position = re.search("\s+".join(old_value.split()), old_line[prefix_start + optionLen:])
+                    old_value_position = re.search(r"\s+".join(old_value.split()), old_line[prefix_start + optionLen:])
                     start = old_value_position.start() + prefix_start + optionLen
                     end = old_value_position.end() + prefix_start + optionLen
                     line = old_line[:start] + value + old_line[end:]
@@ -306,7 +307,6 @@ def setInterfaceOption(module, lines, iface, option, raw_value, state):
         module.fail_json(msg="Error: unsupported state %s, has to be either present or absent" % state)
 
     return changed, lines
-    pass
 
 
 def addOptionAfterLine(option, value, iface, lines, last_line_dict, iface_options):
@@ -338,7 +338,7 @@ def write_changes(module, lines, dest):
 def main():
     module = AnsibleModule(
         argument_spec=dict(
-            dest=dict(default='/etc/network/interfaces', required=False),
+            dest=dict(default='/etc/network/interfaces', required=False, type='path'),
             iface=dict(required=False),
             option=dict(required=False),
             value=dict(required=False),
@@ -349,8 +349,7 @@ def main():
         supports_check_mode=True
     )
 
-    dest = os.path.expanduser(module.params['dest'])
-
+    dest = module.params['dest']
     iface = module.params['iface']
     option = module.params['option']
     value = module.params['value']

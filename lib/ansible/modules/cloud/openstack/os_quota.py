@@ -1,18 +1,9 @@
 #!/usr/bin/python
 # Copyright (c) 2016 Pason System Corporation
-#
-# This module is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This software is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this software.  If not, see <http://www.gnu.org/licenses/>.
+# GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
+
+from __future__ import absolute_import, division, print_function
+__metaclass__ = type
 
 
 ANSIBLE_METADATA = {'metadata_version': '1.1',
@@ -300,39 +291,36 @@ openstack_quotas:
 
 '''
 
-import sys
-
-try:
-    import shade
-    from keystoneauth1 import exceptions
-    HAS_SHADE = True
-except ImportError:
-    HAS_SHADE = False
+from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.openstack import openstack_full_argument_spec, openstack_module_kwargs, openstack_cloud_from_module
 
 
 def _get_volume_quotas(cloud, project):
 
     return cloud.get_volume_quotas(project)
 
+
 def _get_network_quotas(cloud, project):
 
     return cloud.get_network_quotas(project)
+
 
 def _get_compute_quotas(cloud, project):
 
     return cloud.get_compute_quotas(project)
 
-def _get_quotas(module, cloud, project):
+
+def _get_quotas(shade, module, cloud, project):
 
     quota = {}
     try:
         quota['volume'] = _get_volume_quotas(cloud, project)
-    except exceptions.EndpointNotFound:
+    except shade.OpenStackCloudURINotFound:
         module.warn("No public endpoint for volumev2 service was found. Ignoring volume quotas.")
 
     try:
         quota['network'] = _get_network_quotas(cloud, project)
-    except exceptions.EndpointNotFound:
+    except shade.OpenStackCloudURINotFound:
         module.warn("No public endpoint for network service was found. Ignoring network quotas.")
 
     quota['compute'] = _get_compute_quotas(cloud, project)
@@ -341,6 +329,7 @@ def _get_quotas(module, cloud, project):
         quota[quota_type] = _scrub_results(quota[quota_type])
 
     return quota
+
 
 def _scrub_results(quota):
 
@@ -357,6 +346,7 @@ def _scrub_results(quota):
             del quota[attr]
 
     return quota
+
 
 def _system_state_change_details(module, project_quota_output):
 
@@ -376,6 +366,7 @@ def _system_state_change_details(module, project_quota_output):
 
     return (changes_required, quota_change_request)
 
+
 def _system_state_change(module, project_quota_output):
     """
     Determine if changes are required to the current project quota.
@@ -393,6 +384,7 @@ def _system_state_change(module, project_quota_output):
         return True
     else:
         return False
+
 
 def main():
 
@@ -435,17 +427,14 @@ def main():
     )
 
     module = AnsibleModule(argument_spec,
-            supports_check_mode=True
-        )
+                           supports_check_mode=True
+                           )
 
-    if not HAS_SHADE:
-        module.fail_json(msg='shade is required for this module')
-
+    shade, cloud = openstack_cloud_from_module(module)
     try:
         cloud_params = dict(module.params)
-        cloud = shade.operator_cloud(**cloud_params)
 
-        #In order to handle the different volume types we update module params after.
+        # In order to handle the different volume types we update module params after.
         dynamic_types = [
             'gigabytes_types',
             'snapshots_types',
@@ -456,22 +445,23 @@ def main():
             for k, v in module.params[dynamic_type].items():
                 module.params[k] = int(v)
 
-        #Get current quota values
-        project_quota_output = _get_quotas(module, cloud, cloud_params['name'])
+        # Get current quota values
+        project_quota_output = _get_quotas(
+            shade, module, cloud, cloud_params['name'])
         changes_required = False
 
         if module.params['state'] == "absent":
-            #If a quota state is set to absent we should assume there will be changes.
-            #The default quota values are not accessible so we can not determine if
-            #no changes will occur or not.
+            # If a quota state is set to absent we should assume there will be changes.
+            # The default quota values are not accessible so we can not determine if
+            # no changes will occur or not.
             if module.check_mode:
                 module.exit_json(changed=True)
 
-            #Calling delete_network_quotas when a quota has not been set results
-            #in an error, according to the shade docs it should return the
-            #current quota.
-            #The following error string is returned:
-            #network client call failed: Quota for tenant 69dd91d217e949f1a0b35a4b901741dc could not be found.
+            # Calling delete_network_quotas when a quota has not been set results
+            # in an error, according to the shade docs it should return the
+            # current quota.
+            # The following error string is returned:
+            # network client call failed: Quota for tenant 69dd91d217e949f1a0b35a4b901741dc could not be found.
             neutron_msg1 = "network client call failed: Quota for tenant"
             neutron_msg2 = "could not be found"
 
@@ -486,9 +476,9 @@ def main():
                     else:
                         module.fail_json(msg=str(e), extra_data=e.extra_data)
 
-            project_quota_output = _get_quotas(module, cloud, cloud_params['name'])
+            project_quota_output = _get_quotas(
+                shade, module, cloud, cloud_params['name'])
             changes_required = True
-
 
         elif module.params['state'] == "present":
             if module.check_mode:
@@ -504,8 +494,9 @@ def main():
                     quota_call = getattr(cloud, 'set_%s_quotas' % (quota_type))
                     quota_call(cloud_params['name'], **quota_change_request[quota_type])
 
-                #Get quota state post changes for validation
-                project_quota_update = _get_quotas(module, cloud, cloud_params['name'])
+                # Get quota state post changes for validation
+                project_quota_update = _get_quotas(
+                    shade, module, cloud, cloud_params['name'])
 
                 if project_quota_output == project_quota_update:
                     module.fail_json(msg='Could not apply quota update')
@@ -513,14 +504,12 @@ def main():
                 project_quota_output = project_quota_update
 
         module.exit_json(changed=changes_required,
-            openstack_quotas=project_quota_output
-        )
+                         openstack_quotas=project_quota_output
+                         )
 
     except shade.OpenStackCloudException as e:
         module.fail_json(msg=str(e), extra_data=e.extra_data)
 
 
-from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.openstack import openstack_full_argument_spec
 if __name__ == '__main__':
     main()

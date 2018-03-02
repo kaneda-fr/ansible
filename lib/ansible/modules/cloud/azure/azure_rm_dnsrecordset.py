@@ -58,8 +58,8 @@ options:
             - purge
     state:
         description:
-            - Assert the state of the record set. Use 'present' to create or update and
-              'absent' to delete.
+            - Assert the state of the record set. Use C(present) to create or update and
+              C(absent) to delete.
         default: present
         choices:
             - absent
@@ -174,7 +174,7 @@ import sys
 
 from ansible.module_utils.basic import _load_params
 from ansible.module_utils.six import iteritems
-from ansible.module_utils.azure_rm_common import AzureRMModuleBase
+from ansible.module_utils.azure_rm_common import AzureRMModuleBase, HAS_AZURE
 
 try:
     from msrestazure.azure_exceptions import CloudError
@@ -232,6 +232,51 @@ RECORDSET_VALUE_MAP = dict(
 )
 
 
+RECORD_ARGSPECS = dict(
+    A=dict(
+        ipv4_address=dict(type='str', required=True, aliases=['entry'])
+    ),
+    AAAA=dict(
+        ipv6_address=dict(type='str', required=True, aliases=['entry'])
+    ),
+    CNAME=dict(
+        cname=dict(type='str', required=True, aliases=['entry'])
+    ),
+    MX=dict(
+        preference=dict(type='int', required=True),
+        exchange=dict(type='str', required=True, aliases=['entry'])
+    ),
+    NS=dict(
+        nsdname=dict(type='str', required=True, aliases=['entry'])
+    ),
+    PTR=dict(
+        ptrdname=dict(type='str', required=True, aliases=['entry'])
+    ),
+    SRV=dict(
+        priority=dict(type='int', required=True),
+        port=dict(type='int', required=True),
+        weight=dict(type='int', required=True),
+        target=dict(type='str', required=True, aliases=['entry'])
+    ),
+    TXT=dict(
+        value=dict(type='str', required=True, aliases=['entry'])
+    ),
+    # FUTURE: ensure all record types are supported (see https://github.com/Azure/azure-sdk-for-python/tree/master/azure-mgmt-dns/azure/mgmt/dns/models)
+)
+
+RECORDSET_VALUE_MAP = dict(
+    A=dict(attrname='arecords', classobj=ARecord, is_list=True),
+    AAAA=dict(attrname='aaaa_records', classobj=AaaaRecord, is_list=True),
+    CNAME=dict(attrname='cname_record', classobj=CnameRecord, is_list=False),
+    MX=dict(attrname='mx_records', classobj=MxRecord, is_list=True),
+    NS=dict(attrname='ns_records', classobj=NsRecord, is_list=True),
+    PTR=dict(attrname='ptr_records', classobj=PtrRecord, is_list=True),
+    SRV=dict(attrname='srv_records', classobj=SrvRecord, is_list=True),
+    TXT=dict(attrname='txt_records', classobj=TxtRecord, is_list=True),
+    # FUTURE: add missing record types from https://github.com/Azure/azure-sdk-for-python/blob/master/azure-mgmt-dns/azure/mgmt/dns/models/record_set.py
+) if HAS_AZURE else {}
+
+
 class AzureRMRecordSet(AzureRMModuleBase):
 
     def __init__(self):
@@ -279,8 +324,8 @@ class AzureRMRecordSet(AzureRMModuleBase):
         for key in self.module_arg_spec.keys():
             setattr(self, key, kwargs[key])
 
-        # get resource group and zone
-        resource_group = self.get_resource_group(self.resource_group)
+        # retrieve resource group to make sure it exists
+        self.get_resource_group(self.resource_group)
         zone = self.dns_client.zones.get(self.resource_group, self.zone_name)
         if not zone:
             self.fail('The zone {0} does not exist in the resource group {1}'.format(self.zone_name, self.resource_group))
@@ -324,7 +369,6 @@ class AzureRMRecordSet(AzureRMModuleBase):
         if self.results['changed']:
             if self.state == 'present':
                 record_set_args = dict(
-                    type=self.record_type,
                     ttl=self.time_to_live
                 )
 

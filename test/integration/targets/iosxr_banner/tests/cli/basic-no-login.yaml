@@ -5,6 +5,7 @@
     text: |
       Junk login banner
       over multiple lines
+    provider: "{{ cli }}"
     state: present
 
 - name: remove login

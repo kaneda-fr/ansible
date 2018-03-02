@@ -81,6 +81,7 @@ options:
             - Automatically import the gpg signing key of the new or changed repository.
             - Has an effect only if state is I(present). Has no effect on existing (unchanged) repositories or in combination with I(absent).
             - Implies runrefresh.
+            - Only works with C(.repo) files if `name` is given explicitly.
         required: false
         default: "no"
         choices: ["yes", "no"]
@@ -142,9 +143,13 @@ EXAMPLES = '''
     runrefresh: yes
 '''
 
+from distutils.version import LooseVersion
+
+from ansible.module_utils.basic import AnsibleModule
+
+
 REPO_OPTS = ['alias', 'name', 'priority', 'enabled', 'autorefresh', 'gpgcheck']
 
-from distutils.version import LooseVersion
 
 def _get_cmd(*args):
     """Combines the non-interactive zypper command with arguments/subcommands"""
@@ -178,6 +183,7 @@ def _parse_repos(module):
     else:
         module.fail_json(msg='Failed to execute "%s"' % " ".join(cmd), rc=rc, stdout=stdout, stderr=stderr)
 
+
 def _repo_changes(realrepo, repocmp):
     "Check whether the 2 given repos have different settings."
     for k in repocmp:
@@ -193,6 +199,7 @@ def _repo_changes(realrepo, repocmp):
             if valold != valnew:
                 return True
     return False
+
 
 def repo_exists(module, repodata, overwrite_multiple):
     """Check whether the repository already exists.
@@ -288,6 +295,7 @@ def get_zypper_version(module):
         return LooseVersion('1.0')
     return LooseVersion(stdout.split()[1])
 
+
 def runrefreshrepo(module, auto_import_keys=False, shortname=None):
     "Forces zypper to refresh repo metadata."
     if auto_import_keys:
@@ -309,15 +317,15 @@ def main():
             state=dict(choices=['present', 'absent'], default='present'),
             runrefresh=dict(required=False, default='no', type='bool'),
             description=dict(required=False),
-            disable_gpg_check = dict(required=False, default=False, type='bool'),
-            autorefresh = dict(required=False, default=True, type='bool', aliases=['refresh']),
-            priority = dict(required=False, type='int'),
-            enabled = dict(required=False, default=True, type='bool'),
-            overwrite_multiple = dict(required=False, default=False, type='bool'),
-            auto_import_keys = dict(required=False, default=False, type='bool'),
+            disable_gpg_check=dict(required=False, default=False, type='bool'),
+            autorefresh=dict(required=False, default=True, type='bool', aliases=['refresh']),
+            priority=dict(required=False, type='int'),
+            enabled=dict(required=False, default=True, type='bool'),
+            overwrite_multiple=dict(required=False, default=False, type='bool'),
+            auto_import_keys=dict(required=False, default=False, type='bool'),
         ),
         supports_check_mode=False,
-        required_one_of = [['state','runrefresh']],
+        required_one_of=[['state', 'runrefresh']],
     )
 
     repo = module.params['repo']
@@ -398,8 +406,6 @@ def main():
     else:
         module.fail_json(msg="Zypper failed with rc %s" % rc, rc=rc, stdout=stdout, stderr=stderr, repodata=repodata, state=state, warnings=warnings)
 
-# import module snippets
-from ansible.module_utils.basic import *
 
 if __name__ == '__main__':
     main()

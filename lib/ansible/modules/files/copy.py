@@ -55,7 +55,7 @@ options:
         if the destination does not exist.
     type: bool
     default: 'yes'
-    aliases: [ "thirsty" ]
+    aliases: [ thirsty ]
     version_added: "1.1"
   directory_mode:
     description:
@@ -83,13 +83,18 @@ options:
     type: bool
     default: 'yes'
     version_added: "2.4"
+  checksum:
+    description:
+      - SHA1 checksum of the file being transferred. Used to valdiate that the copy of the file was successful.
+      - If this is not provided, ansible will use the local calculated checksum of the src file.
+    version_added: '2.5'
 extends_documentation_fragment:
     - files
     - validate
     - decrypt
 author:
-    - "Ansible Core Team"
-    - "Michael DeHaan"
+    - Ansible Core Team
+    - Michael DeHaan
 notes:
    - The M(copy) module recursively copy facility does not scale to lots (>hundreds) of files.
      For alternative, see M(synchronize) module, which is a wrapper around C(rsync).
@@ -97,32 +102,32 @@ notes:
 '''
 
 EXAMPLES = r'''
-# Example from Ansible Playbooks
-- copy:
+- name: example copying file with owner and permissions
+  copy:
     src: /srv/myfiles/foo.conf
     dest: /etc/foo.conf
     owner: foo
     group: foo
     mode: 0644
 
-# The same example as above, but using a symbolic mode equivalent to 0644
-- copy:
+- name: The same example as above, but using a symbolic mode equivalent to 0644
+  copy:
     src: /srv/myfiles/foo.conf
     dest: /etc/foo.conf
     owner: foo
     group: foo
     mode: u=rw,g=r,o=r
 
-# Another symbolic mode example, adding some permissions and removing others
-- copy:
+- name: Another symbolic mode example, adding some permissions and removing others
+  copy:
     src: /srv/myfiles/foo.conf
     dest: /etc/foo.conf
     owner: foo
     group: foo
     mode: u+rw,g-wx,o-rwx
 
-# Copy a new "ntp.conf file into place, backing up the original if it differs from the copied version
-- copy:
+- name: Copy a new "ntp.conf file into place, backing up the original if it differs from the copied version
+  copy:
     src: /mine/ntp.conf
     dest: /etc/ntp.conf
     owner: root
@@ -130,33 +135,23 @@ EXAMPLES = r'''
     mode: 0644
     backup: yes
 
-# Copy a new "sudoers" file into place, after passing validation with visudo
-- copy:
+- name: Copy a new "sudoers" file into place, after passing validation with visudo
+  copy:
     src: /mine/sudoers
     dest: /etc/sudoers
     validate: /usr/sbin/visudo -cf %s
 
-# Copy a "sudoers" file on the remote machine for editing
-- copy:
+- name: Copy a "sudoers" file on the remote machine for editing
+  copy:
     src: /etc/sudoers
     dest: /etc/sudoers.edit
     remote_src: yes
     validate: /usr/sbin/visudo -cf %s
 
-# Create a CSV file from your complete inventory using an inline template
-- hosts: all
-  tasks:
-  - copy:
-      content: |
-        HOSTNAME;IPADDRESS;FQDN;OSNAME;OSVERSION;PROCESSOR;ARCHITECTURE;MEMORY;
-        {% for host in hostvars %}
-        {%   set vars = hostvars[host|string] %}
-        {{ vars.ansible_hostname }};{{ vars.remote_host }};{{ vars.ansible_fqdn }};{{ vars.ansible_distribution }};{{ vars.ansible_distribution_version }};{{ vars.ansible_processor[1] }};{{ vars.ansible_architecture }};{{ (vars.ansible_memtotal_mb/1024)|round|int }};  # NOQA
-        {% endfor %}
-      dest: /some/path/systems.csv
-      backup: yes
-    run_once: yes
-    delegate_to: localhost
+- name: Copy using the 'content' for inline data
+  copy:
+    content: '# This file was moved to /etc/other.conf'
+    dest: /etc/mine.conf'
 '''
 
 RETURN = r'''
@@ -223,6 +218,7 @@ state:
 '''
 
 import os
+import os.path
 import shutil
 import tempfile
 import traceback
@@ -252,7 +248,7 @@ def adjust_recursive_directory_permissions(pre_existing_dir, new_directory_list,
     Walk the new directories list and make sure that permissions are as we would expect
     '''
 
-    if len(new_directory_list) > 0:
+    if new_directory_list:
         working_dir = os.path.join(pre_existing_dir, new_directory_list.pop(0))
         directory_args['path'] = working_dir
         changed = module.set_fs_attributes_if_different(directory_args, changed)
@@ -275,6 +271,7 @@ def main():
             directory_mode=dict(type='raw'),
             remote_src=dict(type='bool'),
             local_follow=dict(type='bool'),
+            checksum=dict(),
         ),
         add_file_common_args=True,
         supports_check_mode=True,
@@ -283,6 +280,9 @@ def main():
     src = module.params['src']
     b_src = to_bytes(src, errors='surrogate_or_strict')
     dest = module.params['dest']
+    # Make sure we always have a directory component for later processing
+    if os.path.sep not in dest:
+        dest = '.{0}{1}'.format(os.path.sep, dest)
     b_dest = to_bytes(dest, errors='surrogate_or_strict')
     backup = module.params['backup']
     force = module.params['force']
@@ -291,6 +291,7 @@ def main():
     follow = module.params['follow']
     mode = module.params['mode']
     remote_src = module.params['remote_src']
+    checksum = module.params['checksum']
 
     if not os.path.exists(b_src):
         module.fail_json(msg="Source %s not found" % (src))
@@ -308,6 +309,13 @@ def main():
         md5sum_src = None
 
     changed = False
+
+    if checksum and checksum_src != checksum:
+        module.fail_json(
+            msg='Copied file does not match the expected checksum. Transfer failed.',
+            checksum=checksum_src,
+            expected_checksum=checksum
+        )
 
     # Special handling for recursive copy - create intermediate dirs
     if original_basename and dest.endswith(os.sep):

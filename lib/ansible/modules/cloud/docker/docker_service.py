@@ -511,8 +511,8 @@ def make_redirection_tempfiles():
 
 
 def cleanup_redirection_tempfiles(out_name, err_name):
-    get_redirected_output(out_name)
-    get_redirected_output(err_name)
+    for i in [out_name, err_name]:
+        os.remove(i)
 
 
 def get_redirected_output(path_name):
@@ -522,7 +522,6 @@ def get_redirected_output(path_name):
             # strip terminal format/color chars
             new_line = re.sub(r'\x1b\[.+m', '', line)
             output.append(new_line)
-    fd.close()
     os.remove(path_name)
     return output
 
@@ -687,7 +686,7 @@ class ContainerManager(DockerBaseClass):
 
         up_options = {
             u'--no-recreate': False,
-            u'--build': True,
+            u'--build': False,
             u'--no-build': False,
             u'--no-deps': False,
             u'--force-recreate': False,
@@ -895,7 +894,7 @@ class ContainerManager(DockerBaseClass):
 
                     # build the image
                     try:
-                        new_image_id = service.build(pull=True, no_cache=self.nocache)
+                        new_image_id = service.build(pull=self.pull, no_cache=self.nocache)
                     except Exception as exc:
                         self.client.fail("Error: build failed with %s" % str(exc))
 

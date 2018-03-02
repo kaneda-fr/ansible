@@ -16,10 +16,10 @@ DOCUMENTATION = '''
 ---
 module: panos_security_rule
 short_description: Create security rule policy on PAN-OS devices or Panorama management console.
-description: >
-    - Security policies allow you to enforce rules and take action, and can be as general or specific as needed. The
-    policy rules are compared against the incoming traffic in sequence, and because the first rule that matches the
-    traffic is applied, the more specific rules must precede the more general ones.
+description:
+    - Security policies allow you to enforce rules and take action, and can be as general or specific as needed.
+      The policy rules are compared against the incoming traffic in sequence, and because the first rule that matches the traffic is applied,
+      the more specific rules must precede the more general ones.
 author: "Ivan Bojer (@ivanbojer), Robert Hagen (@rnh556)"
 version_added: "2.4"
 requirements:
@@ -236,7 +236,7 @@ RETURN = '''
 '''
 
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils.basic import get_exception
+from ansible.module_utils._text import to_native
 
 try:
     import pan.xapi
@@ -291,7 +291,7 @@ def find_rule(rulebase, rule_name):
 
 def rule_is_match(propose_rule, current_rule):
 
-    match_check = ['name', 'description', 'group_profile', 'antivirus', 'vulnerability'
+    match_check = ['name', 'description', 'group_profile', 'antivirus', 'vulnerability',
                    'spyware', 'url_filtering', 'file_blocking', 'data_filtering',
                    'wildfire_analysis', 'type', 'action', 'tag', 'log_start', 'log_end']
     list_check = ['tozone', 'fromzone', 'source', 'source_user', 'destination', 'category',
@@ -479,9 +479,8 @@ def main():
             try:
                 if commit:
                     match.delete()
-            except PanXapiError:
-                exc = get_exception()
-                module.fail_json(msg=exc.message)
+            except PanXapiError as exc:
+                module.fail_json(msg=to_native(exc))
 
             module.exit_json(changed=True, msg='Rule \'%s\' successfully deleted' % rule_name)
         else:
@@ -525,9 +524,8 @@ def main():
                 changed = add_rule(rulebase, new_rule)
                 if changed and commit:
                     device.commit(sync=True)
-            except PanXapiError:
-                exc = get_exception()
-                module.fail_json(msg=exc.message)
+            except PanXapiError as exc:
+                module.fail_json(msg=to_native(exc))
             module.exit_json(changed=changed, msg='Rule \'%s\' successfully added' % rule_name)
     elif operation == 'update':
         # Search for the rule. Update if found.
@@ -563,9 +561,8 @@ def main():
                 changed = update_rule(rulebase, new_rule)
                 if changed and commit:
                     device.commit(sync=True)
-            except PanXapiError:
-                exc = get_exception()
-                module.fail_json(msg=exc.message)
+            except PanXapiError as exc:
+                module.fail_json(msg=to_native(exc))
             module.exit_json(changed=changed, msg='Rule \'%s\' successfully updated' % rule_name)
         else:
             module.fail_json(msg='Rule \'%s\' does not exist. Use operation: \'add\' to add it.' % rule_name)

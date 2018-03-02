@@ -266,7 +266,6 @@ class StrategyModule(StrategyBase):
                                 # just ignore any errors during task name templating,
                                 # we don't care if it just shows the raw name
                                 display.debug("templating failed for some reason")
-                                pass
                             display.debug("here goes the callback...")
                             self._tqm.send_callback('v2_playbook_on_task_start', task, is_conditional=False)
                             task.name = saved_name
@@ -293,12 +292,12 @@ class StrategyModule(StrategyBase):
 
                 host_results.extend(results)
 
+                self.update_active_connections(results)
+
                 try:
                     included_files = IncludedFile.process_include_results(
                         host_results,
-                        self._tqm,
                         iterator=iterator,
-                        inventory=self._inventory,
                         loader=self._loader,
                         variable_manager=self._variable_manager
                     )
@@ -325,8 +324,7 @@ class StrategyModule(StrategyBase):
                         # list of noop tasks, to make sure that they continue running in lock-step
                         try:
                             if included_file._is_role:
-                                new_ir = included_file._task.copy()
-                                new_ir.vars.update(included_file._args)
+                                new_ir = self._copy_included_file(included_file)
 
                                 new_blocks, handler_blocks = new_ir.get_block_list(
                                     play=iterator._play,
@@ -390,9 +388,10 @@ class StrategyModule(StrategyBase):
 
                 # if any_errors_fatal and we had an error, mark all hosts as failed
                 if any_errors_fatal and (len(failed_hosts) > 0 or len(unreachable_hosts) > 0):
+                    dont_fail_states = frozenset([iterator.ITERATING_RESCUE, iterator.ITERATING_ALWAYS])
                     for host in hosts_left:
                         (s, _) = iterator.get_next_task_for_host(host, peek=True)
-                        if s.run_state != iterator.ITERATING_RESCUE or \
+                        if s.run_state not in dont_fail_states or \
                            s.run_state == iterator.ITERATING_RESCUE and s.fail_state & iterator.FAILED_RESCUE != 0:
                             self._tqm._failed_hosts[host.name] = True
                             result |= self._tqm.RUN_FAILED_BREAK_PLAY
@@ -402,7 +401,7 @@ class StrategyModule(StrategyBase):
                 if iterator._play.max_fail_percentage is not None and len(results) > 0:
                     percentage = iterator._play.max_fail_percentage / 100.0
 
-                    if (len(self._tqm._failed_hosts) / len(results)) > percentage:
+                    if (len(self._tqm._failed_hosts) / iterator.batch_size) > percentage:
                         for host in hosts_left:
                             # don't double-mark hosts, or the iterator will potentially
                             # fail them out of the rescue/always states
@@ -411,6 +410,7 @@ class StrategyModule(StrategyBase):
                                 iterator.mark_host_failed(host)
                         self._tqm.send_callback('v2_playbook_on_no_hosts_remaining')
                         result |= self._tqm.RUN_FAILED_BREAK_PLAY
+                    display.debug('(%s failed / %s total )> %s max fail' % (len(self._tqm._failed_hosts), iterator.batch_size, percentage))
                 display.debug("done checking for max_fail_percentage")
 
                 display.debug("checking to see if all hosts have failed and the running result is not ok")

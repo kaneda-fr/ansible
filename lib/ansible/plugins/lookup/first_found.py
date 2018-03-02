@@ -37,13 +37,13 @@ EXAMPLES = """
 - name: same copy but specific paths
   copy: src={{item}} dest=/some/file
   with_first_found:
-    files:
-      - foo
-      - "{{inventory_hostname}}
-      - bar
-    paths:
-      - /tmp/production
-      - /tmp/staging
+    - files:
+        - foo
+        - "{{inventory_hostname}}
+        - bar
+      paths:
+        - /tmp/production
+        - /tmp/staging
 
 - name: INTERFACES | Create Ansible header for /etc/network/interfaces
   template:
@@ -126,9 +126,7 @@ class LookupModule(LookupBase):
             path = self.find_file_in_search_path(variables, subdir, fn, ignore_missing=True)
             if path is not None:
                 return [path]
-        else:
-            if skip:
-                return []
-            else:
-                raise AnsibleLookupError("No file was found when using with_first_found. Use the 'skip: true' option to allow this task to be skipped if no "
-                                         "files are found")
+        if skip:
+            return []
+        raise AnsibleLookupError("No file was found when using with_first_found. Use the 'skip: true' option to allow this task to be skipped if no "
+                                 "files are found")

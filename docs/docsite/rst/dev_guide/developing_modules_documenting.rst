@@ -30,6 +30,7 @@ All modules must have the following sections defined in this order:
   If you look at some existing older modules, you may find imports at the bottom of the file. Do not copy that idiom into new modules as it is a historical oddity due to how modules used to be combined with libraries. Over time we're moving the imports to be in their proper place.
 
 
+.. _copyright:
 
 Copyright
 ----------------------
@@ -41,15 +42,15 @@ code.
 .. code-block:: python
 
     #!/usr/bin/python
-    # Copyright (c) 2017 Ansible Project
+    
+    # Copyright: (c) 2018, Terry Jones <terry.jones@example.org>
     # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
-Every file should have a copyright line with the original copyright holder.
-Major additions to the module (for instance, rewrites)  may add additional
-copyright lines. Code from the Ansible community should typically be assigned
-as "Copyright (c) 2017 Ansible Project" which covers all contributors. Any
-legal questions need to review the source control history, so an exhaustive
-copyright header is not necessary.
+Every file should have a copyright line (see `The copyright notice <https://www.gnu.org/licenses/gpl-howto.en.html>`_)
+with the original copyright holder. Major additions to the module (for
+instance, rewrites) may add additional copyright lines. Any legal questions
+need to review the source control history, so an exhaustive copyright header is
+not necessary.
 
 The license declaration should be ONLY one line, not the full GPL prefix. If
 you notice a module with the full prefix, feel free to switch it to the
@@ -61,8 +62,9 @@ add the newer line above the older one, like so:
 .. code-block:: python
 
     #!/usr/bin/python
-    # Copyright (c) 2017 [New Contributor(s)]
-    # Copyright (c) 2015 [Original Contributor(s)]
+    
+    # Copyright: (c) 2017, [New Contributor(s)]
+    # Copyright: (c) 2015, [Original Contributor(s)]
     # GNU General Public License v3.0+ (see COPYING or https://www.gnu.org/licenses/gpl-3.0.txt)
 
 
@@ -84,11 +86,11 @@ For new modules, the following block can be simply added into your module
    * ``metadata_version`` is the version of the ``ANSIBLE_METADATA`` schema, *not* the version of the module.
    * Promoting a module's ``status`` or ``supported_by`` status should only be done by members of the Ansible Core Team.
 
-.. note:: Pre-released metdata version
+.. note:: Pre-released metadata version
 
     During development of Ansible-2.3, modules had an initial version of the
     metadata.  This version was modified slightly after release to fix some
-    points of confusion.  You may occassionally see PRs for modules where the
+    points of confusion.  You may occasionally see PRs for modules where the
     ANSIBLE_METADATA doesn't look quite right because of this.  Module
     metadata should be fixed before checking it into the repository.
 
@@ -199,9 +201,17 @@ The following fields can be used and are all required unless specified otherwise
 :author:
   Name of the module author in the form ``First Last (@GitHubID)``. Use a multi-line list if there is more than one author.
 :deprecated:
-  If this module is deprecated, detail when that happened, and what to use instead, e.g.
-  `Deprecated in 2.3. Use M(whatmoduletouseinstead) instead.`
-  Ensure `CHANGELOG.md` is updated to reflect this.
+  If a module is deprecated it must be:
+
+  * Mentioned in ``CHANGELOG``
+  * Referenced in the ``porting_guide_x.y.rst``
+  * File should be renamed to start with an ``_``
+  * ``ANSIBLE_METADATA`` must contain ``status: ['deprecated']``
+  * Following values must be set:
+
+  :removed_in: A `string`, such as ``"2.9"``, which represents the version of Ansible this module will replaced with docs only module stub.
+  :why: Optional string that used to detail why this has been removed.
+  :alternative: Inform users they should do instead, i.e. ``Use M(whatmoduletouseinstead) instead.``.
 :options:
   One per module argument:
 
@@ -335,8 +345,30 @@ Example::
         returned: when supported
         type: string
         sample: 2a5aeecc61dc98c4d780b14b330e3282
-    ...
+    '''
 
+    RETURN = '''
+    packages:
+        description: Information about package requirements
+        returned: On success
+        type: complex
+        contains:
+            missing:
+                description: Packages that are missing from the system
+                returned: success
+                type: list
+                sample:
+                    - libmysqlclient-dev
+                    - libxml2-dev
+            badversion:
+                description: Packages that are installed but at bad versions.
+                returned: success
+                type: list
+                sample:
+                    - package: libxml2-dev
+                      version: 2.9.4+dfsg1-2
+                      constraint: ">= 3.0"
+    '''
 
 .. note::
 
@@ -357,8 +389,8 @@ Starting with Ansible version 2.2, all new modules are required to use imports i
 
    The use of "wildcard" imports such as ``from module_utils.basic import *`` is no longer allowed.
 
-Formatting options
-------------------
+Formatting functions
+--------------------
 
 These formatting functions are ``U()`` for URLs, ``I()`` for option names, ``C()`` for files and option values and ``M()`` for module names.
 Module names should be specified as ``M(module)`` to create a link to the online documentation for that module.
@@ -397,6 +429,9 @@ Examples can be found by searching for ``extends_documentation_fragment`` under 
 Testing documentation
 ---------------------
 
+The simplest way to check if your documentation works is to use ``ansible-doc`` to view it. Any parsing errors will be apparent, and details can be obtained by adding ``-vvv``.
+
+If you are going to submit the module for inclusion in the main Ansible repo you should make sure that it renders correctly as HTML.
 Put your completed module file into the ``lib/ansible/modules/$CATEGORY/`` directory and then
 run the command: ``make webdocs``. The new 'modules.html' file will be
 built in the ``docs/docsite/_build/html/$MODULENAME_module.html`` directory.

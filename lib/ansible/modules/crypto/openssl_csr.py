@@ -22,9 +22,8 @@ short_description: Generate OpenSSL Certificate Signing Request (CSR)
 description:
     - "This module allows one to (re)generate OpenSSL certificate signing requests.
        It uses the pyOpenSSL python library to interact with openssl. This module supports
-       the subjectAltName as well as the keyUsage and extendedKeyUsage extensions.
-       Note: At least one of common_name or subject_alt_name must be specified.
-       This module uses file common arguments to specify generated file permissions."
+       the subjectAltName, keyUsage, extendedKeyUsage, basicConstraints and OCSP Must Staple
+       extensions."
 requirements:
     - "python-pyOpenSSL >= 0.15"
 options:
@@ -49,7 +48,7 @@ options:
             - The passphrase for the privatekey.
     version:
         required: false
-        default: 3
+        default: 1
         description:
             - Version of the certificate signing request
     force:
@@ -61,7 +60,13 @@ options:
     path:
         required: true
         description:
-            - Name of the folder in which the generated OpenSSL certificate signing request will be written
+            - Name of the file into which the generated OpenSSL certificate signing request will be written
+    subject:
+        required: false
+        description:
+            - Key/value pairs that will be present in the subject name field of the certificate signing request.
+            - If you need to specify more than one value with the same key, use a list as value.
+        version_added: '2.5'
     country_name:
         required: false
         aliases: [ 'C', 'countryName' ]
@@ -103,6 +108,9 @@ options:
         description:
             - SAN extension to attach to the certificate signing request
             - This can either be a 'comma separated string' or a YAML list.
+            - Values should be prefixed by their options. (i.e., C(email), C(URI), C(DNS), C(RID), C(IP), C(dirName),
+              C(otherName) and the ones specific to your CA)
+            - More at U(https://tools.ietf.org/html/rfc5280#section-4.2.1.6)
     subject_alt_name_critical:
         required: false
         aliases: [ 'subjectAltName_critical' ]
@@ -132,11 +140,41 @@ options:
         aliases: [ 'extKeyUsage_critical', 'extendedKeyUsage_critical' ]
         description:
             - Should the extkeyUsage extension be considered as critical
+    basic_constraints:
+        required: false
+        aliases: ['basicConstraints']
+        description:
+            - Indicates basic constraints, such as if the certificate is a CA.
+        version_added: 2.5
+    basic_constraints_critical:
+        required: false
+        aliases: [ 'basicConstraints_critical' ]
+        description:
+            - Should the basicConstraints extension be considered as critical
+        version_added: 2.5
+    ocsp_must_staple:
+        required: false
+        aliases: ['ocspMustStaple']
+        description:
+            - Indicates that the certificate should contain the OCSP Must Staple
+              extension (U(https://tools.ietf.org/html/rfc7633)).
+        version_added: 2.5
+    ocsp_must_staple_critical:
+        required: false
+        aliases: [ 'ocspMustStaple_critical' ]
+        description:
+            - Should the OCSP Must Staple extension be considered as critical
+            - "Warning: according to the RFC, this extension should not be marked
+               as critical, as old clients not knowing about OCSP Must Staple
+               are required to reject such certificates
+               (see U(https://tools.ietf.org/html/rfc7633#section-4))."
+        version_added: 2.5
+extends_documentation_fragment: files
 
 notes:
     - "If the certificate signing request already exists it will be checked whether subjectAltName,
-       keyUsage and extendedKeyUsage only contain the requested values and if the request was signed
-       by the given private key"
+       keyUsage, extendedKeyUsage and basicConstraints only contain the requested values, whether
+       OCSP Must Staple is as requested, and if the request was signed by the given private key."
 '''
 
 
@@ -183,10 +221,17 @@ EXAMPLES = '''
     privatekey_path: /etc/ssl/private/ansible.com.pem
     common_name: www.ansible.com
     key_usage:
-      - digitlaSignature
+      - digitalSignature
       - keyAgreement
     extended_key_usage:
       - clientAuth
+
+# Generate an OpenSSL Certificate Signing Request with OCSP Must Staple
+- openssl_csr:
+    path: /etc/ssl/csr/www.ansible.com.csr
+    privatekey_path: /etc/ssl/private/ansible.com.pem
+    common_name: www.ansible.com
+    ocsp_must_staple: true
 '''
 
 
@@ -202,10 +247,10 @@ filename:
     type: string
     sample: /etc/ssl/csr/www.ansible.com.csr
 subject:
-    description: A dictionnary of the subject attached to the CSR
+    description: A list of the subject tuples attached to the CSR
     returned: changed or success
     type: list
-    sample: {'CN': 'www.ansible.com', 'O': 'Ansible'}
+    sample: "[('CN', 'www.ansible.com'), ('O', 'Ansible')]"
 subjectAltName:
     description: The alternative names this CSR is valid for
     returned: changed or success
@@ -221,20 +266,40 @@ extendedKeyUsage:
     returned: changed or success
     type: list
     sample: [ 'clientAuth' ]
+basicConstraints:
+    description: Indicates if the certificate belongs to a CA
+    returned: changed or success
+    type: list
+    sample: ['CA:TRUE', 'pathLenConstraint:0']
+ocsp_must_staple:
+    description: Indicates whether the certificate has the OCSP
+                 Must Staple feature enabled
+    returned: changed or success
+    type: bool
+    sample: false
 '''
 
 import os
 
 from ansible.module_utils import crypto as crypto_utils
 from ansible.module_utils.basic import AnsibleModule
-from ansible.module_utils._text import to_native
+from ansible.module_utils._text import to_native, to_bytes
 
 try:
+    import OpenSSL
     from OpenSSL import crypto
 except ImportError:
     pyopenssl_found = False
 else:
     pyopenssl_found = True
+    if OpenSSL.SSL.OPENSSL_VERSION_NUMBER >= 0x10100000:
+        # OpenSSL 1.1.0 or newer
+        MUST_STAPLE_NAME = b"tlsfeature"
+        MUST_STAPLE_VALUE = b"status_request"
+    else:
+        # OpenSSL 1.0.x or older
+        MUST_STAPLE_NAME = b"1.3.6.1.5.5.7.1.24"
+        MUST_STAPLE_VALUE = b"DER:30:03:02:01:05"
 
 
 class CertificateSigningRequestError(crypto_utils.OpenSSLObjectError):
@@ -260,37 +325,50 @@ class CertificateSigningRequest(crypto_utils.OpenSSLObject):
         self.keyUsage_critical = module.params['keyUsage_critical']
         self.extendedKeyUsage = module.params['extendedKeyUsage']
         self.extendedKeyUsage_critical = module.params['extendedKeyUsage_critical']
+        self.basicConstraints = module.params['basicConstraints']
+        self.basicConstraints_critical = module.params['basicConstraints_critical']
+        self.ocspMustStaple = module.params['ocspMustStaple']
+        self.ocspMustStaple_critical = module.params['ocspMustStaple_critical']
         self.request = None
         self.privatekey = None
 
-        self.subject = {
-            'C': module.params['countryName'],
-            'ST': module.params['stateOrProvinceName'],
-            'L': module.params['localityName'],
-            'O': module.params['organizationName'],
-            'OU': module.params['organizationalUnitName'],
-            'CN': module.params['commonName'],
-            'emailAddress': module.params['emailAddress'],
-        }
+        self.subject = [
+            ('C', module.params['countryName']),
+            ('ST', module.params['stateOrProvinceName']),
+            ('L', module.params['localityName']),
+            ('O', module.params['organizationName']),
+            ('OU', module.params['organizationalUnitName']),
+            ('CN', module.params['commonName']),
+            ('emailAddress', module.params['emailAddress']),
+        ]
+
+        if module.params['subject']:
+            self.subject = self.subject + crypto_utils.parse_name_field(module.params['subject'])
+        self.subject = [(entry[0], entry[1]) for entry in self.subject if entry[1]]
 
         if not self.subjectAltName:
-            self.subjectAltName = ['DNS:%s' % self.subject['CN']]
-
-        self.subject = dict((k, v) for k, v in self.subject.items() if v)
+            for sub in self.subject:
+                if OpenSSL._util.lib.OBJ_txt2nid(to_bytes(sub[0])) == 13:  # 13 is the NID for "commonName"
+                    self.subjectAltName = ['DNS:%s' % sub[1]]
+                    break
 
     def generate(self, module):
         '''Generate the certificate signing request.'''
 
         if not self.check(module, perms_required=False) or self.force:
             req = crypto.X509Req()
-            req.set_version(self.version)
+            req.set_version(self.version - 1)
             subject = req.get_subject()
-            for (key, value) in self.subject.items():
-                if value is not None:
-                    setattr(subject, key, value)
+            for entry in self.subject:
+                if entry[1] is not None:
+                    # Workaround for https://github.com/pyca/pyopenssl/issues/165
+                    nid = OpenSSL._util.lib.OBJ_txt2nid(to_bytes(entry[0]))
+                    OpenSSL._util.lib.X509_NAME_add_entry_by_NID(subject._name, nid, OpenSSL._util.lib.MBSTRING_UTF8, to_bytes(entry[1]), -1, -1, 0)
 
-            altnames = ', '.join(self.subjectAltName)
-            extensions = [crypto.X509Extension(b"subjectAltName", self.subjectAltName_critical, altnames.encode('ascii'))]
+            extensions = []
+            if self.subjectAltName:
+                altnames = ', '.join(self.subjectAltName)
+                extensions.append(crypto.X509Extension(b"subjectAltName", self.subjectAltName_critical, altnames.encode('ascii')))
 
             if self.keyUsage:
                 usages = ', '.join(self.keyUsage)
@@ -300,7 +378,15 @@ class CertificateSigningRequest(crypto_utils.OpenSSLObject):
                 usages = ', '.join(self.extendedKeyUsage)
                 extensions.append(crypto.X509Extension(b"extendedKeyUsage", self.extendedKeyUsage_critical, usages.encode('ascii')))
 
-            req.add_extensions(extensions)
+            if self.basicConstraints:
+                usages = ', '.join(self.basicConstraints)
+                extensions.append(crypto.X509Extension(b"basicConstraints", self.basicConstraints_critical, usages.encode('ascii')))
+
+            if self.ocspMustStaple:
+                extensions.append(crypto.X509Extension(MUST_STAPLE_NAME, self.ocspMustStaple_critical, MUST_STAPLE_VALUE))
+
+            if extensions:
+                req.add_extensions(extensions)
 
             req.set_pubkey(self.privatekey)
             req.sign(self.privatekey, self.digest)
@@ -326,10 +412,10 @@ class CertificateSigningRequest(crypto_utils.OpenSSLObject):
         self.privatekey = crypto_utils.load_privatekey(self.privatekey_path, self.privatekey_passphrase)
 
         def _check_subject(csr):
-            subject = csr.get_subject()
-            for (key, value) in self.subject.items():
-                if getattr(subject, key, None) != value:
-                    return False
+            subject = [(OpenSSL._util.lib.OBJ_txt2nid(to_bytes(sub[0])), to_bytes(sub[1])) for sub in self.subject]
+            current_subject = [(OpenSSL._util.lib.OBJ_txt2nid(to_bytes(sub[0])), to_bytes(sub[1])) for sub in csr.get_subject().get_components()]
+            if not set(subject) == set(current_subject):
+                return False
 
             return True
 
@@ -348,26 +434,41 @@ class CertificateSigningRequest(crypto_utils.OpenSSLObject):
 
             return True
 
-        def _check_keyUsage_(extensions, extName, expected, critical, long):
+        def _check_keyUsage_(extensions, extName, expected, critical):
             usages_ext = [ext for ext in extensions if ext.get_short_name() == extName]
             if (not usages_ext and expected) or (usages_ext and not expected):
                 return False
             elif not usages_ext and not expected:
                 return True
             else:
-                current = [usage.strip() for usage in str(usages_ext[0]).split(',')]
-                expected = [long[usage] if usage in long else usage for usage in expected]
+                current = [OpenSSL._util.lib.OBJ_txt2nid(to_bytes(usage.strip())) for usage in str(usages_ext[0]).split(',')]
+                expected = [OpenSSL._util.lib.OBJ_txt2nid(to_bytes(usage)) for usage in expected]
                 return set(current) == set(expected) and usages_ext[0].get_critical() == critical
 
         def _check_keyUsage(extensions):
-            return _check_keyUsage_(extensions, b'keyUsage', self.keyUsage, self.keyUsage_critical, crypto_utils.keyUsageLong)
+            return _check_keyUsage_(extensions, b'keyUsage', self.keyUsage, self.keyUsage_critical)
 
         def _check_extenededKeyUsage(extensions):
-            return _check_keyUsage_(extensions, b'extendedKeyUsage', self.extendedKeyUsage, self.extendedKeyUsage_critical, crypto_utils.extendedKeyUsageLong)
+            return _check_keyUsage_(extensions, b'extendedKeyUsage', self.extendedKeyUsage, self.extendedKeyUsage_critical)
+
+        def _check_basicConstraints(extensions):
+            return _check_keyUsage_(extensions, b'basicConstraints', self.basicConstraints, self.basicConstraints_critical)
+
+        def _check_ocspMustStaple(extensions):
+            oms_ext = [ext for ext in extensions if ext.get_short_name() == MUST_STAPLE_NAME and str(ext) == MUST_STAPLE_VALUE]
+            if OpenSSL.SSL.OPENSSL_VERSION_NUMBER < 0x10100000:
+                # Older versions of libssl don't know about OCSP Must Staple
+                oms_ext.extend([ext for ext in extensions if ext.get_short_name() == b'UNDEF' and ext.get_data() == b'\x30\x03\x02\x01\x05'])
+            if self.ocspMustStaple:
+                return len(oms_ext) > 0 and oms_ext[0].get_critical() == self.ocspMustStaple_critical
+            else:
+                return len(oms_ext) == 0
 
         def _check_extensions(csr):
             extensions = csr.get_extensions()
-            return _check_subjectAltName(extensions) and _check_keyUsage(extensions) and _check_extenededKeyUsage(extensions)
+            return (_check_subjectAltName(extensions) and _check_keyUsage(extensions) and
+                    _check_extenededKeyUsage(extensions) and _check_basicConstraints(extensions) and
+                    _check_ocspMustStaple(extensions))
 
         def _check_signature(csr):
             try:
@@ -392,6 +493,8 @@ class CertificateSigningRequest(crypto_utils.OpenSSLObject):
             'subjectAltName': self.subjectAltName,
             'keyUsage': self.keyUsage,
             'extendedKeyUsage': self.extendedKeyUsage,
+            'basicConstraints': self.basicConstraints,
+            'ocspMustStaple': self.ocspMustStaple,
             'changed': self.changed
         }
 
@@ -405,9 +508,10 @@ def main():
             digest=dict(default='sha256', type='str'),
             privatekey_path=dict(require=True, type='path'),
             privatekey_passphrase=dict(type='str', no_log=True),
-            version=dict(default='3', type='int'),
+            version=dict(default='1', type='int'),
             force=dict(default=False, type='bool'),
             path=dict(required=True, type='path'),
+            subject=dict(type='dict'),
             countryName=dict(aliases=['C', 'country_name'], type='str'),
             stateOrProvinceName=dict(aliases=['ST', 'state_or_province_name'], type='str'),
             localityName=dict(aliases=['L', 'locality_name'], type='str'),
@@ -421,10 +525,13 @@ def main():
             keyUsage_critical=dict(aliases=['key_usage_critical'], default=False, type='bool'),
             extendedKeyUsage=dict(aliases=['extKeyUsage', 'extended_key_usage'], type='list'),
             extendedKeyUsage_critical=dict(aliases=['extKeyUsage_critical', 'extended_key_usage_critical'], default=False, type='bool'),
+            basicConstraints=dict(aliases=['basic_constraints'], type='list'),
+            basicConstraints_critical=dict(aliases=['basic_constraints_critical'], default=False, type='bool'),
+            ocspMustStaple=dict(aliases=['ocsp_must_staple'], default=False, type='bool'),
+            ocspMustStaple_critical=dict(aliases=['ocsp_must_staple_critical'], default=False, type='bool'),
         ),
         add_file_common_args=True,
         supports_check_mode=True,
-        required_one_of=[['commonName', 'subjectAltName']],
     )
 
     if not pyopenssl_found:

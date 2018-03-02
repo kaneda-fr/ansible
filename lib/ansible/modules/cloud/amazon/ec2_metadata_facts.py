@@ -26,6 +26,8 @@ description:
       The module must be called from within the EC2 instance itself.
 notes:
     - Parameters to filter on ec2_metadata_facts may be added later.
+extends_documentation_fragment:
+    - url
 '''
 
 EXAMPLES = '''
@@ -450,7 +452,9 @@ class Ec2Metadata(object):
             data = None
         return to_text(data)
 
-    def _mangle_fields(self, fields, uri, filter_patterns=['public-keys-0']):
+    def _mangle_fields(self, fields, uri, filter_patterns=None):
+        filter_patterns = ['public-keys-0'] if filter_patterns is None else filter_patterns
+
         new_fields = {}
         for key, value in fields.items():
             split_fields = key[len(uri):].split('/')

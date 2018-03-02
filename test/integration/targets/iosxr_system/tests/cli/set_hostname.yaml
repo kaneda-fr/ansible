@@ -1,5 +1,5 @@
 ---
-- debug: msg="START cli/set_hostname.yaml"
+- debug: msg="START cli/set_hostname.yaml on connection={{ ansible_connection }}"
 
 - name: setup
   iosxr_config:
@@ -29,4 +29,4 @@
     lines: "hostname {{ inventory_hostname }}"
     match: none
 
-- debug: msg="END cli/set_hostname.yaml"
+- debug: msg="END cli/set_hostname.yaml on connection={{ ansible_connection }}"

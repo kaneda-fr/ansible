@@ -32,23 +32,23 @@
   template: src=foo.j2 dest={{output_dir}}/foo.templated mode=0644
   register: template_result
 
-- assert: 
-    that: 
-        - "'changed' in template_result" 
-        - "'dest' in template_result" 
-        - "'group' in template_result" 
-        - "'gid' in template_result" 
-        - "'md5sum' in template_result" 
+- assert:
+    that:
+        - "'changed' in template_result"
+        - "'dest' in template_result"
+        - "'group' in template_result"
+        - "'gid' in template_result"
+        - "'md5sum' in template_result"
         - "'checksum' in template_result"
-        - "'owner' in template_result" 
-        - "'size' in template_result" 
-        - "'src' in template_result" 
-        - "'state' in template_result" 
-        - "'uid' in template_result" 
+        - "'owner' in template_result"
+        - "'size' in template_result"
+        - "'src' in template_result"
+        - "'state' in template_result"
+        - "'uid' in template_result"
 
 - name: verify that the file was marked as changed
-  assert: 
-    that: 
+  assert:
+    that:
       - "template_result.changed == true"
 
 # test for import with context on jinja-2.9 See https://github.com/ansible/ansible/issues/20494
@@ -68,6 +68,21 @@
     that:
         - 'diff_result.stdout == ""'
         - "diff_result.rc == 0"
+
+# test for nested include https://github.com/ansible/ansible/issues/34886
+- name: test if parent variables are defined in nested include
+  template: src=for_loop.j2 dest={{output_dir}}/for_loop.templated mode=0644
+
+- name: save templated output
+  shell: "cat {{output_dir}}/for_loop.templated"
+  register: for_loop_out
+- debug: var=for_loop_out
+- name: verify variables got templated
+  assert:
+    that:
+        - '"foo" in for_loop_out.stdout'
+        - '"bar" in for_loop_out.stdout'
+        - '"bam" in for_loop_out.stdout'
 
 # test for 'import as' on jinja-2.9 See https://github.com/ansible/ansible/issues/20494
 - name: fill in a template using import as ala fails2 case in issue 20494
@@ -258,10 +273,10 @@
   register: templated
 
 - name: verify that the file was marked as changed in check mode but was not created
-  assert: 
-    that: 
+  assert:
+    that:
       - "not templated.stat.exists"
-      - "template_result|changed"
+      - "template_result is changed"
 
 - name: fill in a basic template
   template: src=short.j2 dest={{output_dir}}/short.templated
@@ -272,13 +287,13 @@
   check_mode: True
 
 - name: verify that the file was marked as not changes in check mode
-  assert: 
-    that: 
-      - "not template_result|changed"
+  assert:
+    that:
+      - "template_result is not changed"
       - "'templated_var_loaded' in lookup('file', '{{output_dir | expanduser}}/short.templated')"
 
 - name: change var for the template
-  set_fact: 
+  set_fact:
     templated_var: "changed"
 
 - name: fill in a basic template with changed var in check mode
@@ -287,10 +302,10 @@
   check_mode: True
 
 - name: verify that the file was marked as changed in check mode but the content was not changed
-  assert: 
-    that: 
+  assert:
+    that:
       - "'templated_var_loaded' in lookup('file', '{{output_dir | expanduser }}/short.templated')"
-      - "template_result|changed"
+      - "template_result is changed"
 
 # Create a template using a child template, to ensure that variables
 # are passed properly from the parent to subtemplate context (issue #20063)
@@ -304,7 +319,7 @@
 - name: verify that the parent and subtemplate creation worked
   assert:
     that:
-    - "template_result|changed"
+    - "template_result is changed"
 
 #
 # template module can overwrite a file that's been hard linked
@@ -368,7 +383,7 @@
 - name: verify that the file was marked as changed (Unix)
   assert:
     that:
-      - 'template_result|changed'
+      - 'template_result is changed'
 
 - name: fill in a basic template again (Unix)
   template:
@@ -379,7 +394,7 @@
 - name: verify that the template was not changed (Unix)
   assert:
     that:
-      - 'not template_result2|changed'
+      - 'template_result2 is not changed'
 
 # VERIFY UNIX CONTENTS
 - name: copy known good into place (Unix)
@@ -414,7 +429,7 @@
 - name: verify that the file was marked as changed (DOS)
   assert:
     that:
-      - 'template_result|changed'
+      - 'template_result is changed'
 
 - name: fill in a basic template again (DOS)
   template:
@@ -426,7 +441,7 @@
 - name: verify that the template was not changed (DOS)
   assert:
     that:
-      - 'not template_result2|changed'
+      - 'template_result2 is not changed'
 
 # VERIFY DOS CONTENTS
 - name: copy known good into place (DOS)

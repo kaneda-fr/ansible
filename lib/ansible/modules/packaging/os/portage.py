@@ -220,10 +220,10 @@ EXAMPLES = '''
     depclean: yes
 '''
 
-
 import os
-import pipes
 import re
+
+from ansible.module_utils.basic import AnsibleModule
 
 
 def query_package(module, package, action):
@@ -289,7 +289,7 @@ def sync_repositories(module, webrsync=False):
 def emerge_packages(module, packages):
     p = module.params
 
-    if not (p['update'] or p['noreplace'] or p['state']=='latest'):
+    if not (p['update'] or p['noreplace'] or p['state'] == 'latest'):
         for package in packages:
             if not query_package(module, package, 'emerge'):
                 break
@@ -319,7 +319,7 @@ def emerge_packages(module, packages):
         if p[flag]:
             args.append(arg)
 
-    if p['state'] and p['state']=='latest':
+    if p['state'] and p['state'] == 'latest':
         args.append("--update")
 
     if p['usepkg'] and p['usepkgonly']:
@@ -508,8 +508,6 @@ def main():
     elif p['state'] in portage_absent_states:
         unmerge_packages(module, packages)
 
-# import module snippets
-from ansible.module_utils.basic import *
 
 if __name__ == '__main__':
     main()

@@ -11,6 +11,18 @@ else
 CPUS ?= $(shell nproc)
 endif
 
+MODULE_ARGS=
+ifdef MODULES
+	MODULE_ARGS = -l $(MODULES)
+endif
+
+PLUGIN_ARGS=
+ifdef PLUGINS
+	PLUGIN_ARGS = -l $(PLUGINS)
+endif
+
+DOC_PLUGINS ?= cache callback connection inventory lookup strategy vars
+
 assertrst:
 ifndef rst
 	$(error specify document or pattern with rst=somefile.rst)
@@ -20,15 +32,20 @@ all: docs
 
 docs: clean htmldocs
 
-htmldocs: testing keywords modules staticmin cli config
+generate_rst: staticmin config cli keywords modules plugins testing
 
+htmldocs: generate_rst
 	CPUS=$(CPUS) $(MAKE) -f Makefile.sphinx html
+
+singlehtmldocs: generate_rst
+	CPUS=$(CPUS) $(MAKE) -f Makefile.sphinx singlehtml
 
 webdocs: docs
 
 #TODO: leaving htmlout removal for those having older versions, should eventually be removed also
 clean:
 	-rm -rf htmlout
+	-rm -rf module_docs
 	-rm -rf _build
 	-rm -f .buildinfo
 	-rm -f objects.inv
@@ -41,33 +58,43 @@ clean:
 	find . -type f \( -name "*~" -or -name "#*" \) -delete
 	find . -type f \( -name "*.swp" \) -delete
 	@echo "Cleaning up generated rst"
-	-rm rst/list_of_*.rst
-	-rm rst/*_by_category.rst
-	-rm rst/*_module.rst
-	-rm rst/*_maintained.rst
+	-rm rst/cli/ansible-*.rst
+	-rm rst/cli/ansible.rst
+	-rm rst/modules/*_by_category.rst
+	-rm rst/modules/list_of_*.rst
+	-rm rst/modules/*_maintained.rst
+	-rm rst/modules/*_module.rst
+	-rm rst/modules/*_plugin.rst
 	-rm rst/playbooks_directives.rst
-	-rm rst/playbooks_keywords.rst
-#	-rm rst/cli/ansible*.rst
+	-rm rst/plugins/*/*.rst
+	-rm rst/reference_appendices/config.rst
+	-rm rst/reference_appendices/playbooks_keywords.rst
 
-.PHONEY: docs clean
+.PHONY: docs clean
+
+# TODO: make generate_man output dir cli option
+cli: $(GENERATE_CLI)
+	PYTHONPATH=../../lib $(GENERATE_CLI) --template-file=../templates/cli_rst.j2 --output-dir=rst/cli/ --output-format rst ../../lib/ansible/cli/*.py
 
 # TODO: make generate_man output dir cli option
 cli: $(GENERATE_CLI)
 	PYTHONPATH=../../lib $(GENERATE_CLI) --template-file=../templates/cli_rst.j2 --output-dir=rst/ --output-format rst ../../lib/ansible/cli/*.py
 
 keywords: $(FORMATTER) ../templates/playbooks_keywords.rst.j2
-	PYTHONPATH=../../lib $(DUMPER) --template-dir=../templates --output-dir=rst/ -d ./keyword_desc.yml
+	PYTHONPATH=../../lib $(DUMPER) --template-dir=../templates --output-dir=rst/reference_appendices/ -d ./keyword_desc.yml
 
 config:
-	PYTHONPATH=../../lib $(CONFIG_DUMPER) --template-file=../templates/config.rst.j2 --output-dir=rst/ -d ../../lib/ansible/config/base.yml
+	PYTHONPATH=../../lib $(CONFIG_DUMPER) --template-file=../templates/config.rst.j2 --output-dir=rst/reference_appendices/ -d ../../lib/ansible/config/base.yml
 
 modules: $(FORMATTER) ../templates/plugin.rst.j2
-# Limit building of module documentation if requested.
-ifdef MODULES
-	PYTHONPATH=../../lib $(FORMATTER) -t rst --template-dir=../templates --module-dir=../../lib/ansible/modules -o rst/ -l $(MODULES)
-else
-	PYTHONPATH=../../lib $(FORMATTER) -t rst --template-dir=../templates --module-dir=../../lib/ansible/modules -o rst/
-endif
+	PYTHONPATH=../../lib $(FORMATTER) -t rst --template-dir=../templates --module-dir=../../lib/ansible/modules -o rst/modules/ $(MODULE_ARGS)
+
+plugins: $(FORMATTER) ../templates/plugin.rst.j2
+	@echo "looping over doc plugins"
+	for plugin in $(DOC_PLUGINS); \
+	do \
+		PYTHONPATH=../../lib $(FORMATTER) -t rst --plugin-type $$plugin --template-dir=../templates --module-dir=../../lib/ansible/plugins/$$plugin -o rst $(PLUGIN_ARGS); \
+	done
 
 testing:
 	$(TESTING_FORMATTER)

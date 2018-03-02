@@ -9,7 +9,7 @@ DOCUMENTATION = '''
     callback: syslog_json
     callback_type: notification
     requirements:
-      - whietlist in configuration
+      - whitelist in configuration
     short_description: sends JSON events to syslog
     version_added: "1.9"
     description:
@@ -17,7 +17,7 @@ DOCUMENTATION = '''
       - Before 2.4 only environment variables were available for configuration
     options:
       server:
-        description: syslog server that will recieve the event
+        description: syslog server that will receive the event
         env:
         - name: SYSLOG_SERVER
         default: localhost
@@ -25,7 +25,7 @@ DOCUMENTATION = '''
           - section: callback_syslog_json
             key: syslog_server
       port:
-        description: prot on which the syslog server is listening
+        description: port on which the syslog server is listening
         env:
           - name: SYSLOG_PORT
         default: 514
@@ -33,7 +33,7 @@ DOCUMENTATION = '''
           - section: callback_syslog_json
             key: syslog_port
       facility:
-        description: syslog facitliy to log as
+        description: syslog facility to log as
         env:
           - name: SYSLOG_FACILITY
         default: user
@@ -78,22 +78,22 @@ class CallbackModule(CallbackBase):
         self.hostname = socket.gethostname()
 
     def runner_on_failed(self, host, res, ignore_errors=False):
-        self.logger.error('%s ansible-command: task execution FAILED; host: %s; message: %s' % (self.hostname, host, self._dump_results(res)))
+        self.logger.error('%s ansible-command: task execution FAILED; host: %s; message: %s', self.hostname, host, self._dump_results(res))
 
     def runner_on_ok(self, host, res):
-        self.logger.info('%s ansible-command: task execution OK; host: %s; message: %s' % (self.hostname, host, self._dump_results(res)))
+        self.logger.info('%s ansible-command: task execution OK; host: %s; message: %s', self.hostname, host, self._dump_results(res))
 
     def runner_on_skipped(self, host, item=None):
-        self.logger.info('%s ansible-command: task execution SKIPPED; host: %s; message: %s' % (self.hostname, host, 'skipped'))
+        self.logger.info('%s ansible-command: task execution SKIPPED; host: %s; message: %s', self.hostname, host, 'skipped')
 
     def runner_on_unreachable(self, host, res):
-        self.logger.error('%s ansible-command: task execution UNREACHABLE; host: %s; message: %s' % (self.hostname, host, self._dump_results(res)))
+        self.logger.error('%s ansible-command: task execution UNREACHABLE; host: %s; message: %s', self.hostname, host, self._dump_results(res))
 
     def runner_on_async_failed(self, host, res, jid):
-        self.logger.error('%s ansible-command: task execution FAILED; host: %s; message: %s' % (self.hostname, host, self._dump_results(res)))
+        self.logger.error('%s ansible-command: task execution FAILED; host: %s; message: %s', self.hostname, host, self._dump_results(res))
 
     def playbook_on_import_for_host(self, host, imported_file):
-        self.logger.info('%s ansible-command: playbook IMPORTED; host: %s; message: imported file %s' % (self.hostname, host, imported_file))
+        self.logger.info('%s ansible-command: playbook IMPORTED; host: %s; message: imported file %s', self.hostname, host, imported_file)
 
     def playbook_on_not_import_for_host(self, host, missing_file):
-        self.logger.info('%s ansible-command: playbook NOT IMPORTED; host: %s; message: missing file %s' % (self.hostname, host, missing_file))
+        self.logger.info('%s ansible-command: playbook NOT IMPORTED; host: %s; message: missing file %s', self.hostname, host, missing_file)

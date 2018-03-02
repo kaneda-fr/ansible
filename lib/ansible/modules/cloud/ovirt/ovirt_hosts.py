@@ -268,9 +268,6 @@ class HostsModule(BaseModule):
             ssh=otypes.Ssh(
                 authentication_method=otypes.SshAuthenticationMethod.PUBLICKEY,
             ) if self.param('public_key') else None,
-            kdump_status=otypes.KdumpStatus(
-                self.param('kdump_integration')
-            ) if self.param('kdump_integration') else None,
             spm=otypes.Spm(
                 priority=self.param('spm_priority'),
             ) if self.param('spm_priority') else None,
@@ -283,14 +280,15 @@ class HostsModule(BaseModule):
             ) if self.param('kernel_params') else None,
             power_management=otypes.PowerManagement(
                 enabled=self.param('power_management_enabled'),
-            ) if self.param('power_management_enabled') is not None else None,
+                kdump_detection=self.param('kdump_integration') == 'enabled',
+            ) if self.param('power_management_enabled') is not None or self.param('kdump_integration') else None,
         )
 
     def update_check(self, entity):
         kernel_params = self.param('kernel_params')
         return (
             equal(self.param('comment'), entity.comment) and
-            equal(self.param('kdump_integration'), entity.kdump_status) and
+            equal(self.param('kdump_integration'), 'enabled' if entity.power_management.kdump_detection else 'disabled') and
             equal(self.param('spm_priority'), entity.spm.priority) and
             equal(self.param('power_management_enabled'), entity.power_management.enabled) and
             equal(self.param('override_display'), getattr(entity.display, 'address', None)) and
@@ -316,6 +314,28 @@ class HostsModule(BaseModule):
             wait=self.param('wait'),
             timeout=self.param('timeout'),
         )
+
+    def failed_state_after_reinstall(self, host, count=0):
+        if host.status in [
+            hoststate.ERROR,
+            hoststate.INSTALL_FAILED,
+            hoststate.NON_OPERATIONAL,
+        ]:
+            return True
+
+        # If host is in non-responsive state after upgrade/install
+        # let's wait for few seconds and re-check again the state:
+        if host.status == hoststate.NON_RESPONSIVE:
+            if count <= 3:
+                time.sleep(20)
+                return self.failed_state_after_reinstall(
+                    self._service.service(host.id).get(),
+                    count + 1,
+                )
+            else:
+                return True
+
+        return False
 
 
 def failed_state(host):
@@ -421,7 +441,7 @@ def main():
                     module.params.get('hosted_engine') == 'deploy'
                 ) if module.params.get('hosted_engine') is not None else None,
                 result_state=hoststate.UP if host is None else None,
-                fail_condition=failed_state if host is None else lambda h: False,
+                fail_condition=hosts_module.failed_state_after_reinstall if host is None else lambda h: False,
             )
             if module.params['activate'] and host is not None:
                 ret = hosts_module.action(
@@ -454,8 +474,11 @@ def main():
                             event
                             for event in events_service.list(
                                 from_=int(last_event.id),
-                                search='type=885 and host.name=%s' % host.name,
-                            )
+                                search='type=885',
+                                # Uncomment when 4.1 is EOL, and remove the cond:
+                                # if host.name in event.description
+                                # search='type=885 and host.name=%s' % host.name,
+                            ) if host.name in event.description
                         ]) > 0
                     ),
                     fail_condition=lambda host: len([
@@ -473,16 +496,17 @@ def main():
                 action_condition=lambda h: h.update_available,
                 wait_condition=lambda h: h.status == result_state,
                 post_action=lambda h: time.sleep(module.params['poll_interval']),
-                fail_condition=failed_state,
+                fail_condition=hosts_module.failed_state_after_reinstall,
             )
         elif state == 'iscsidiscover':
             host_id = get_id_by_name(hosts_service, module.params['name'])
+            iscsi_param = module.params['iscsi']
             iscsi_targets = hosts_service.service(host_id).iscsi_discover(
                 iscsi=otypes.IscsiDetails(
-                    port=int(module.params['iscsi']['port']) if module.params['iscsi']['port'].isdigit() else None,
-                    username=module.params['iscsi']['username'],
-                    password=module.params['iscsi']['password'],
-                    address=module.params['iscsi']['address'],
+                    port=int(iscsi_param.get('port', 3260)),
+                    username=iscsi_param.get('username'),
+                    password=iscsi_param.get('password'),
+                    address=iscsi_param.get('address'),
                 ),
             )
             ret = {
@@ -492,14 +516,15 @@ def main():
             }
         elif state == 'iscsilogin':
             host_id = get_id_by_name(hosts_service, module.params['name'])
+            iscsi_param = module.params['iscsi']
             ret = hosts_module.action(
                 action='iscsi_login',
                 iscsi=otypes.IscsiDetails(
-                    port=int(module.params['iscsi']['port']) if module.params['iscsi']['port'].isdigit() else None,
-                    username=module.params['iscsi']['username'],
-                    password=module.params['iscsi']['password'],
-                    address=module.params['iscsi']['address'],
-                    target=module.params['iscsi']['target'],
+                    port=int(iscsi_param.get('port', 3260)),
+                    username=iscsi_param.get('username'),
+                    password=iscsi_param.get('password'),
+                    address=iscsi_param.get('address'),
+                    target=iscsi_param.get('target'),
                 ),
             )
         elif state == 'started':
@@ -546,7 +571,7 @@ def main():
                 action_condition=lambda h: h.status == hoststate.MAINTENANCE,
                 post_action=hosts_module.post_reinstall,
                 wait_condition=lambda h: h.status == hoststate.MAINTENANCE,
-                fail_condition=failed_state,
+                fail_condition=hosts_module.failed_state_after_reinstall,
                 host=otypes.Host(
                     override_iptables=module.params['override_iptables'],
                 ) if module.params['override_iptables'] else None,

@@ -133,6 +133,10 @@ class ElbManager:
                 # balancer. Ignore it and try the next one.
                 continue
 
+            # The instance is not associated with any load balancer so nothing to do
+            if not self._get_instance_lbs():
+                return
+
             lb.deregister_instances([self.instance_id])
 
             # The ELB is changing state in some way. Either an instance that's
@@ -167,7 +171,7 @@ class ElbManager:
         found = False
         for lb in self.lbs:
             if lb.name == lbtest:
-                found=True
+                found = True
                 break
         return found
 
@@ -326,7 +330,7 @@ def main():
     argument_spec.update(dict(
         state={'required': True},
         instance_id={'required': True},
-        ec2_elbs={'default': None, 'required': False, 'type':'list'},
+        ec2_elbs={'default': None, 'required': False, 'type': 'list'},
         enable_availability_zone={'default': True, 'required': False, 'type': 'bool'},
         wait={'required': False, 'default': True, 'type': 'bool'},
         wait_timeout={'required': False, 'default': 0, 'type': 'int'}
@@ -359,7 +363,7 @@ def main():
     if ec2_elbs is not None:
         for elb in ec2_elbs:
             if not elb_man.exists(elb):
-                msg="ELB %s does not exist" % elb
+                msg = "ELB %s does not exist" % elb
                 module.fail_json(msg=msg)
 
     if module.params['state'] == 'present':
