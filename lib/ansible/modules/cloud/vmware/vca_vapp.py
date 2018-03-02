@@ -272,6 +272,18 @@ def connect_to_network(module, vdc_name, vapp_name, vm_name, network_name, netwo
 
     return get_vm_details(module)
 
+def disconnect_from_networks(module, vdc_name, vapp_name):
+    nets = filter(lambda n: n.name == network_name, module.vca.get_networks(vdc_name))
+    assert len(nets) == 1
+    the_vdc = module.vca.get_vdc(vdc_name)
+    the_vapp = module.vca.get_vapp(the_vdc, vapp_name)
+    assert the_vapp
+    assert the_vapp.name == vapp_name
+
+    # Disconnect vApp
+    task = the_vapp.disconnect_from_networks
+    return
+
 def get_vm_details(module):
     vdc_name = module.params['vdc_name']
     vapp_name = module.params['vapp_name']
@@ -308,6 +320,7 @@ def get_vm_details(module):
                             _url):
                         ips.append(c.anyAttributes_.get(
                             _url))
+    #TODO return list of IPs when having several interfaces
     if len(ips) > 0:
         the_vm_details["vm_ip"] = ips[0]
 
