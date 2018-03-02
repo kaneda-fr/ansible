@@ -1,0 +1,17 @@
+{
+  "uploadOnSave": false,
+  "useAtomicWrites": false,
+  "deleteLocal": false,
+  "Xhostname": "57.242.232.114",
+  "hostname": "57.242.232.115",
+  "port": "22",
+  "target": "/root/dev/ansible",
+  "ignore": [
+    ".remote-sync.json",
+    ".git/**"
+  ],
+  "username": "root",
+  "keyfile": "/Users/kaneda/.ssh/id_rsa",
+  "watch": [],
+  "transport": "scp"
+}
