@@ -182,7 +182,7 @@ def create(module):
     connectnetwork = module.params['operation'] == 'connectnetwork'
 
     task = module.vca.create_vapp(vdc_name, vapp_name, template_name,
-                                  catalog_name, network_name, network_mode,
+                                  catalog_name, network_name, 'bridged',
                                   vm_name, vm_cpus, vm_memory, deploy, poweron)
     if task is False:
         module.fail('unable to create vapp')
